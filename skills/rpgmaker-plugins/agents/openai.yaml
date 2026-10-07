@@ -1,0 +1,4 @@
+interface:
+  display_name: "RPG Maker 插件清单"
+  short_description: "通过脚本修改 plugins.js，支持参数、顺序、启停与备份恢复"
+  default_prompt: "使用 $rpgmaker-plugins 检查当前工程的插件清单，并通过随附脚本完成所需修改。"
