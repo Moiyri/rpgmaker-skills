@@ -1,0 +1,4 @@
+interface:
+  display_name: "RPG Maker 数据库"
+  short_description: "通过脚本读取与修改任意数据库字段，支持多层嵌套路径及批量备份恢复"
+  default_prompt: "使用 $rpgmaker-database 定位工程中的目标数据库字段，通过脚本预览并完成所需修改。"

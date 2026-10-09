@@ -1,0 +1,207 @@
+[
+  [
+    {
+      "code": 205,
+      "indent": 0,
+      "parameters": [
+        -1,
+        {
+          "list": [
+            {
+              "code": 41,
+              "parameters": [
+                "ve/!$ve_interact",
+                0
+              ],
+              "indent": null
+            },
+            {
+              "code": 15,
+              "parameters": [
+                30
+              ],
+              "indent": null
+            },
+            {
+              "code": 41,
+              "parameters": [
+                "!$ve_normal%(4)",
+                0
+              ],
+              "indent": null
+            },
+            {
+              "code": 0
+            }
+          ],
+          "repeat": false,
+          "skippable": false,
+          "wait": true
+        }
+      ]
+    },
+    {
+      "code": 505,
+      "indent": 0,
+      "parameters": [
+        {
+          "code": 41,
+          "parameters": [
+            "ve/!$ve_interact",
+            0
+          ],
+          "indent": null
+        }
+      ]
+    },
+    {
+      "code": 505,
+      "indent": 0,
+      "parameters": [
+        {
+          "code": 15,
+          "parameters": [
+            30
+          ],
+          "indent": null
+        }
+      ]
+    },
+    {
+      "code": 505,
+      "indent": 0,
+      "parameters": [
+        {
+          "code": 41,
+          "parameters": [
+            "!$ve_normal%(4)",
+            0
+          ],
+          "indent": null
+        }
+      ]
+    }
+  ],
+  [
+    {
+      "code": 205,
+      "indent": 0,
+      "parameters": [
+        -1,
+        {
+          "list": [
+            {
+              "code": 41,
+              "parameters": [
+                "ve/!$ve_interact",
+                0
+              ],
+              "indent": null
+            },
+            {
+              "code": 15,
+              "parameters": [
+                30
+              ],
+              "indent": null
+            },
+            {
+              "code": 41,
+              "parameters": [
+                "!$ve_normal%(4)",
+                0
+              ],
+              "indent": null
+            },
+            {
+              "code": 0
+            }
+          ],
+          "repeat": false,
+          "skippable": false,
+          "wait": false
+        }
+      ]
+    },
+    {
+      "code": 505,
+      "indent": 0,
+      "parameters": [
+        {
+          "code": 41,
+          "parameters": [
+            "ve/!$ve_interact",
+            0
+          ],
+          "indent": null
+        }
+      ]
+    },
+    {
+      "code": 505,
+      "indent": 0,
+      "parameters": [
+        {
+          "code": 15,
+          "parameters": [
+            30
+          ],
+          "indent": null
+        }
+      ]
+    },
+    {
+      "code": 505,
+      "indent": 0,
+      "parameters": [
+        {
+          "code": 41,
+          "parameters": [
+            "!$ve_normal%(4)",
+            0
+          ],
+          "indent": null
+        }
+      ]
+    }
+  ],
+  [
+    {
+      "code": 205,
+      "indent": 1,
+      "parameters": [
+        15,
+        {
+          "list": [
+            {
+              "code": 45,
+              "parameters": [
+                "this.opaque(0, 60, true);"
+              ],
+              "indent": null
+            },
+            {
+              "code": 0
+            }
+          ],
+          "repeat": false,
+          "skippable": false,
+          "wait": true
+        }
+      ]
+    },
+    {
+      "code": 505,
+      "indent": 1,
+      "parameters": [
+        {
+          "code": 45,
+          "parameters": [
+            "this.opaque(0, 60, true);"
+          ],
+          "indent": null
+        }
+      ]
+    }
+  ]
+]

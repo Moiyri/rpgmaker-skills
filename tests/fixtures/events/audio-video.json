@@ -1,0 +1,67 @@
+{
+  "250": {
+    "code": 250,
+    "indent": 0,
+    "parameters": [
+      {
+        "name": "dorm-door-opening",
+        "volume": 90,
+        "pitch": 100,
+        "pan": 0
+      }
+    ]
+  },
+  "241": {
+    "code": 241,
+    "indent": 0,
+    "parameters": [
+      {
+        "name": "mozart_symphony40_1",
+        "volume": 90,
+        "pitch": 100,
+        "pan": 0
+      }
+    ]
+  },
+  "245": {
+    "code": 245,
+    "indent": 0,
+    "parameters": [
+      {
+        "name": "232257__klangfabrik__plasticclocktick03",
+        "volume": 40,
+        "pitch": 100,
+        "pan": 0
+      }
+    ]
+  },
+  "242": {
+    "code": 242,
+    "indent": 0,
+    "parameters": [
+      1
+    ]
+  },
+  "246": {
+    "code": 246,
+    "indent": 0,
+    "parameters": [
+      1
+    ]
+  },
+  "251": {
+    "code": 251,
+    "indent": 2,
+    "parameters": []
+  },
+  "243": {
+    "code": 243,
+    "indent": 0,
+    "parameters": []
+  },
+  "244": {
+    "code": 244,
+    "indent": 0,
+    "parameters": []
+  }
+}
