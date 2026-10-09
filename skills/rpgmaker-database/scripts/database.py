@@ -85,7 +85,7 @@ def root_path(value):
     return root
 
 
-def file_path(root, name):
+def file_path(root, name, allow_missing=False):
     require(isinstance(name, str) and bool(name), "file must be a nonempty relative JSON path")
     relative = Path(name)
     require(not relative.is_absolute() and ".." not in relative.parts,
@@ -94,7 +94,7 @@ def file_path(root, name):
     require(relative.parts[0] not in (BACKUPS, LOCK), "Reserved transaction path")
     target = root / relative
     require(target.resolve() == target, "Symlink paths are not supported")
-    require(target.is_file(), f"Database file does not exist: {name}")
+    require(target.is_file() or (allow_missing and not os.path.lexists(target)), f"Database file does not exist or is not regular: {name}")
     return target
 
 
@@ -363,10 +363,27 @@ def prepare(root, plan):
     require(type(plan["version"]) is int and plan["version"] == 1, "Plan version must be 1")
     require(isinstance(plan["operations"], list) and bool(plan["operations"]), "operations must be a nonempty array")
     originals, documents, changed, log = {}, {}, {}, []
+    lifecycle = {}
     for index, op in enumerate(plan["operations"]):
         try:
             require(isinstance(op, dict) and "file" in op, "Operation requires file")
             name = op["file"]
+            if op.get('op') in ('create_file','delete_file'):
+                require(re.fullmatch(r'Map[0-9]{3,}\.json',name), 'File lifecycle limited to map files')
+                require(name not in lifecycle and (name not in originals or (op['op']=='delete_file' and equal(documents[name],changed[name]))), 'Lifecycle target already modified')
+                fields(op, {'op','file','text'} if op['op']=='create_file' else {'op','file'})
+                target=file_path(root,name,allow_missing=True)
+                if op['op']=='create_file':
+                    require(not os.path.lexists(target), 'Map file already exists')
+                    require(isinstance(op['text'],str),'Expected JSON text')
+                    raw=op['text'].encode('utf-8');read_document(raw)
+                    originals[name]=None;lifecycle[name]=raw
+                else:
+                    require(target.is_file(),'Map file missing')
+                    originals[name]=target.read_bytes();lifecycle[name]=None
+                log.append({'operation':index,'file':name,'op':op['op']})
+                continue
+            require(name not in lifecycle,'Cannot edit lifecycle target again')
             target = file_path(root, name)
             require(target.relative_to(root).as_posix() == name, "Use canonical relative POSIX paths")
             if name not in originals:
@@ -385,9 +402,10 @@ def prepare(root, plan):
         except (Invalid, ValueError, OSError) as exc:
             raise Invalid(f"Operation {index}: {exc}") from exc
     serializer = render_preserving if plan.get("format") == "preserve" else render
-    updated = {name: serializer(raw, documents[name], changed[name]) for name, raw in originals.items()}
+    updated = {name: serializer(raw, documents[name], changed[name]) for name, raw in originals.items() if name not in lifecycle}
     for name, raw in updated.items():
         require(equal(read_document(raw), changed[name]), f"Serialization mismatch: {name}")
+    updated.update(lifecycle)
     return originals, updated, log
 
 
@@ -415,6 +433,11 @@ def save_manifest(path, value):
         temporary.unlink(missing_ok=True)
 
 
+def current_bytes(root,name):
+    target=file_path(root,name,allow_missing=True)
+    return target.read_bytes() if target.exists() else None
+
+
 def commit(root, originals, updated):
     names = [name for name in originals if originals[name] != updated[name]]
     if not names:
@@ -426,7 +449,7 @@ def commit(root, originals, updated):
     manifest_path = None
     try:
         for name, raw in originals.items():
-            require(file_path(root, name).read_bytes() == raw, f"Source changed: {name}")
+            require(current_bytes(root, name) == raw, f"Source changed: {name}")
         backup_root = root / BACKUPS
         require(not backup_root.is_symlink(), "Backup directory cannot be a symlink")
         backup_root.mkdir(exist_ok=True)
@@ -434,23 +457,26 @@ def commit(root, originals, updated):
         manifest_path = transaction / "transaction.json"
         manifest = {"version": 1, "root": str(root), "status": "prepared", "files": []}
         for index, name in enumerate(names):
-            target = file_path(root, name)
-            modes[name] = stat.S_IMODE(target.stat().st_mode)
+            target = file_path(root, name,allow_missing=True)
+            modes[name] = stat.S_IMODE(target.stat().st_mode) if target.exists() else 0o644
             backup_name = f"{index}.json"
-            with (transaction / backup_name).open("xb") as out:
-                out.write(originals[name])
-                out.flush()
-                os.fsync(out.fileno())
+            if originals[name] is not None:
+                with (transaction / backup_name).open("xb") as out:
+                    out.write(originals[name]);out.flush();os.fsync(out.fileno())
+            else:backup_name=None
             manifest["files"].append({"file": name, "backup": backup_name,
-                                      "before_sha256": sha(originals[name]), "after_sha256": sha(updated[name])})
-            temps[name] = stage(target, updated[name], modes[name])
+                                      "before_sha256": sha(originals[name]) if originals[name] is not None else None, "after_sha256": sha(updated[name]) if updated[name] is not None else None})
+            if updated[name] is not None:temps[name] = stage(target, updated[name], modes[name])
         save_manifest(manifest_path, manifest)
         for name, raw in originals.items():
-            require(file_path(root, name).read_bytes() == raw, f"Source changed before replacement: {name}")
+            require(current_bytes(root, name) == raw, f"Source changed before replacement: {name}")
         for name in names:
-            target = file_path(root, name)
-            require(target.read_bytes() == originals[name], f"Source changed before replacement: {name}")
-            os.replace(temps[name], target)
+            target = file_path(root, name,allow_missing=True)
+            require(current_bytes(root,name) == originals[name], f"Source changed before replacement: {name}")
+            if updated[name] is None:target.unlink()
+            elif originals[name] is None:
+                os.link(temps[name],target)  # Atomic no-overwrite publication.
+            else:os.replace(temps[name], target)
             replaced.append(name)
         manifest["status"] = "committed"
         save_manifest(manifest_path, manifest)
@@ -460,10 +486,13 @@ def commit(root, originals, updated):
         for name in reversed(replaced):
             recovery_temp = None
             try:
-                target = file_path(root, name)
-                require(target.read_bytes() == updated[name], f"New external edit at {name}; not overwritten")
-                recovery_temp = stage(target, originals[name], modes[name])
-                os.replace(recovery_temp, target)
+                target = file_path(root, name,allow_missing=True)
+                require(current_bytes(root,name) == updated[name], f"New external edit at {name}; not overwritten")
+                if originals[name] is None:target.unlink()
+                else:
+                    recovery_temp = stage(target, originals[name], modes[name])
+                    if updated[name] is None:os.link(recovery_temp,target)
+                    else:os.replace(recovery_temp, target)
             except Exception as recovery:
                 recovery_errors.append(f"{name}: {recovery}")
             finally:
@@ -498,21 +527,28 @@ def prepare_restore(root, location):
     for entry in manifest["files"]:
         fields(entry, {"file", "backup", "before_sha256", "after_sha256"})
         name = entry["file"]
-        target = file_path(root, name)
+        target = file_path(root, name,allow_missing=True)
         require(name not in originals, "Duplicate transaction file")
         backup = entry["backup"]
+        if backup is None:
+            require(entry['before_sha256'] is None and re.fullmatch(r'Map[0-9]{3,}\.json',name),'Invalid creation backup')
+            originals[name]=current_bytes(root,name)
+            require(originals[name] is not None and sha(originals[name])==entry['after_sha256'],'Created map changed; refusing removal')
+            updated[name]=None
+            continue
         require(isinstance(backup, str) and re.fullmatch(r"[0-9]+\.json", backup), "Invalid backup filename")
         backup_path = manifest_path.parent / backup
         require(not backup_path.is_symlink(), "Backup cannot be a symlink")
         updated[name] = backup_path.read_bytes()
         require(sha(updated[name]) == entry["before_sha256"], f"Backup checksum mismatch: {name}")
         read_document(updated[name])
-        originals[name] = target.read_bytes()  # Damaged current JSON is recoverable.
+        originals[name] = current_bytes(root,name)
+        if entry['after_sha256'] is None:require(originals[name] is None,'Deleted map path is occupied')
     return originals, updated
 
 
 def preview_result(root, originals, updated, intent):
-    files = [{"file": name, "before_sha256": sha(raw), "after_sha256": sha(updated[name]),
+    files = [{"file": name, "before_sha256": sha(raw) if raw is not None else None, "after_sha256": sha(updated[name]) if updated[name] is not None else None,
               "changed": raw != updated[name]} for name, raw in originals.items()]
     token = sha(dumps({"root": str(root), "files": files, "intent": intent},
                      sort_keys=True, separators=(",", ":")).encode("utf-8"))

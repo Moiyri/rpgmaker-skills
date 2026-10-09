@@ -18,7 +18,7 @@ def _module(name, path):
 
 def _inventory(project):
     root = Path(project).resolve(strict=True)
-    parser = _module('plugin_manifest_query', SKILLS / 'rpgmaker-plugins/scripts/plugins_js.py')
+    parser = _module('plugin_manifest_query', Path(__file__).with_name('plugins_js.py'))
     records = parser.parse((root / 'js/plugins.js').read_bytes())[3]
     folder = root / 'js/plugins'
     files = {}
@@ -114,9 +114,14 @@ def main():
             p.add_argument('--command');p.add_argument('--struct')
             p.add_argument('--section',choices=['commands','parameters','help'],default='commands')
             p.add_argument('--language',default='zh')
+    p=sub.add_parser('parameter-help');p.add_argument('--plugin',required=True);p.add_argument('--path',help='JSON path array; omit to list roots');p.add_argument('--language',default='zh')
     args=parser.parse_args()
     try:
-        if args.action=='list':result=list_plugins(args.project,search=args.search,enabled_only=args.enabled)
+        if args.action=='parameter-help':
+            import json
+            from plugin_api import Plugins
+            result=Plugins(args.project).parameter_help(args.plugin,json.loads(args.path) if args.path else None,language=args.language)
+        elif args.action=='list':result=list_plugins(args.project,search=args.search,enabled_only=args.enabled)
         elif args.action=='check':result=check_plugin(args.project,args.plugin)
         elif args.action=='parameters':result=plugin_parameters(args.project,args.plugin,parameter=args.parameter)
         else:result=plugin_help(args.project,args.plugin,command=args.command,section=args.section,struct=args.struct,language=args.language)

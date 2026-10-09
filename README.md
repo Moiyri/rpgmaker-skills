@@ -2,10 +2,11 @@
 
 用于 RPG Maker 工程操作的可独立分发 skills。先实现可验证的文件操作脚本，再由 skill 指导 agent 调用；目标文件修改必须经过脚本。
 
-## 第一个 skill：rpgmaker-plugins
+## 插件：rpgmaker-plugins
 
 - [SKILL.md](skills/rpgmaker-plugins/SKILL.md)：触发条件与 agent 工作流。
 - [脚本需求和接口](skills/rpgmaker-plugins/references/script-contract.md)：支持范围、JSON 计划、写入保证及失败边界。
+- [plugin.py](skills/rpgmaker-plugins/scripts/plugin.py)：查询插件列表、安装／注册／启用状态、当前参数和命令帮助；默认简短文本。命令帮助依赖相邻事件技能及其数据库依赖。
 - [plugins_js.py](skills/rpgmaker-plugins/scripts/plugins_js.py)：Python 3.10+ 标准库实现。
 - [行为测试](tests/test_plugins_js.py)：解析、修改、预览、备份、恢复及失败不落盘。
 
@@ -52,6 +53,8 @@ python3 skills/rpgmaker-database/scripts/database.py --root "/path/to/project/da
 
 事件 skill 依赖相邻的 rpgmaker-database，分发时必须同时保留两个目录。工程修改通过 events.py 调用数据库后端，默认预览，显式写入须使用预览指纹。
 
-## 插件统一入口：rpgmaker-plugin
+## 游戏测试：rpgmaker-playtest
 
-[技能说明](skills/rpgmaker-plugin/SKILL.md)。当前支持插件列表、安装／注册／启用状态、当前参数和命令用法查询，默认简短文本；复用现有清单编辑和声明解析脚本。插件编写流程后续完善。
+[技能入口](skills/rpgmaker-playtest/SKILL.md)：Python 标准库连接 NW.js，动态发现测试命令、读档及截图。内置可选 Debug.js，工程金手指通过子插件扩展。启动会话自动在结束时关闭本次进程；[读档示例](skills/rpgmaker-playtest/examples/load_game.py)。
+
+插件清单可使用 [Plugins 对象接口](skills/rpgmaker-plugins/scripts/plugin_api.py) 完成注册增删、参数修改、启停与排序，统一预览后提交。

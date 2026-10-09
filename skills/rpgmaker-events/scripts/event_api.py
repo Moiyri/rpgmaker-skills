@@ -26,3 +26,6 @@ from event_core.operands import Constant, VariableValue, RandomValue, ScriptValu
 __all__ = ['ShowChoices', 'Label', 'JumpToLabel', 'ExitEvent', 'FadeoutScreen', 'FadeinScreen', 'TintScreen', 'FlashScreen', 'ShakeScreen', 'SetWeatherEffect', 'PlayBGM', 'FadeoutBGM', 'SaveBGM', 'ReplayBGM', 'PlayBGS', 'FadeoutBGS', 'PlayME', 'PlaySE', 'StopSE', 'PlayMovie', 'NameInput', 'OpenMenu', 'OpenSave', 'GameOver', 'ReturnToTitle', 'ShowPicture', 'MovePicture', 'RotatePicture', 'TintPicture', 'ErasePicture', 'SetVehicleLocation', 'SetEventLocation', 'ScrollMap', 'SetMovementRoute', 'GetOnOffVehicle', 'Route', 'RouteStep', 'plugin_help', 'PluginCommand', 'MapDocument', 'MapEvent', 'EventPage', 'list_map', 'search_events', 'Comment', 'ChangeGold', 'ChangeItems', 'TransferPlayer', 'Wait', 'EraseEvent', 'Script', 'SetSelfSwitch', 'StartTimer', 'StopTimer', 'EventList', 'ShowText', 'SetSwitch', 'ChangeVariable', 'If', 'CommonEvent',
            'Loop', 'BreakLoop', 'Switch', 'Variable', 'Constant', 'VariableValue', 'RandomValue',
            'ScriptValue', 'ScriptCondition', 'OpaqueCommand', 'Actor', 'Character', 'Button', 'Item', 'SelfSwitch']
+
+from event_core.common_event_settings import common_event_settings_plan
+__all__ += ['common_event_settings_plan']

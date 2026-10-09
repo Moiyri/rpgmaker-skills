@@ -46,7 +46,7 @@ Python 3.10+，仅标准库。必须同时分发相邻的 `../rpgmaker-database/
 
 示例编号只是示例，实际操作必须使用用户指定的目标。
 
-编写插件命令前，先使用 [插件查询技能](../rpgmaker-plugin/SKILL.md) 的 check 检查文件、注册及启用状态；同一工程同一插件本轮检查一次，配置改变后重新检查。缺失或禁用时报告，不自动启用。随后调用 `plugin_help(project, "插件名")`，或执行：
+编写插件命令前，先使用 [插件技能](../rpgmaker-plugins/SKILL.md) 的 check 检查文件、注册及启用状态；同一工程同一插件本轮检查一次，配置改变后重新检查。缺失或禁用时报告，不自动启用。随后调用 `plugin_help(project, "插件名")`，或执行：
 
 ```sh
 python3 "<skill>/scripts/events.py" --project "<project>" plugin-help --plugin "veloria/Ve_1_Message"
@@ -146,3 +146,10 @@ python3 "<skill>/scripts/events.py" --project "<project>" apply --plan "plan.jso
 当前支持公共事件指令及现有地图内的事件、事件页管理，不包含战斗事件列表或新建地图。静态结构检查不代替编辑器显示或 Playtest；报告实际执行过的验证及未验证项。
 
 开发或更名后必须同步更新[指令实现状态](references/command-status.md)。在仓库根目录运行 `python3 -m unittest discover -s tests -v`；工程集成测试通过环境变量启用，并只读原工程、在副本写入。
+
+
+## 公共事件条目与设置
+
+列出、搜索、创建或删除公共事件条目使用数据库技能 `Database.common_events`。目标不存在时先创建并提交，取得 ID 后再读取、编写指令。仅删除指令仍使用 EventList；删除整条记录交给数据库技能。
+
+事件名称、触发方式和触发开关通过本技能 `common_event_settings_plan(project, id, name=None, trigger=None, switch_id=None)` 修改。trigger 使用 none／autorun／parallel，省略字段保持原值；返回的是数据库计划，使用 `database.py apply` 预览和提交，不传给 events.py apply。该计划绑定原记录，保留所有指令及扩展字段，检查有效触发开关。设置提交后再重新读取指令快照继续编写。

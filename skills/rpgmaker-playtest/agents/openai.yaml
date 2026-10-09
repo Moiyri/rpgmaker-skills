@@ -1,0 +1,4 @@
+interface:
+  display_name: "RPG Maker 游戏测试"
+  short_description: "连接 NW.js 查询游戏测试命令，按需安装 Debug 并通过子插件扩展金手指"
+  default_prompt: "使用 $rpgmaker-playtest 验证游戏行为，按需使用 Debug.js，测试结束关闭本次启动的进程。"

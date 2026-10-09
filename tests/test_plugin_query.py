@@ -3,7 +3,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
-sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'skills/rpgmaker-plugin/scripts'))
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'skills/rpgmaker-plugins/scripts'))
 from plugin import check_plugin,list_plugins,plugin_parameters,plugin_help
 class PluginQueryTests(unittest.TestCase):
  def setUp(self):
