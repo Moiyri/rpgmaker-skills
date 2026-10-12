@@ -3,13 +3,12 @@ import json
 import math
 import re
 from decimal import Decimal
-from plugin import _module, SKILLS
+from .declarations import _plugin_metadata
 
 MISSING = object()
 
 def metadata(project, name, language='zh'):
-    parser = _module('plugin_parameter_declarations', SKILLS/'rpgmaker-events/scripts/event_core/plugin_help.py')
-    return parser._plugin_metadata(project, name, language=language)
+    return _plugin_metadata(project, name, language=language)
 
 def field(fields, name):
     matches = [f for f in fields if f['name'] == name]
@@ -42,8 +41,9 @@ def container(spec, raw, meta):
 def repack(value,original):
     return json.dumps(value,ensure_ascii=False,separators=(',',':')) if isinstance(original,str) else value
 
-def walk(spec,raw,parts,meta,replacement=MISSING):
+def walk(spec,raw,parts,meta,replacement=MISSING,operation=None):
     if not parts:
+        if operation is not None:return operation(spec,raw)
         return (spec,raw) if replacement is MISSING else encode(spec,replacement,meta,raw)
     values,children=container(spec,raw,meta);key=parts[0]
     if isinstance(values,list):
@@ -52,8 +52,8 @@ def walk(spec,raw,parts,meta,replacement=MISSING):
     else:
         if not isinstance(key,str): raise ValueError('Struct field must be a name')
         child=field(children,key)
-    value=walk(child,values[key] if key in values else MISSING,parts[1:],meta,replacement) if isinstance(values,dict) else walk(child,values[key],parts[1:],meta,replacement)
-    if replacement is MISSING:return value
+    value=walk(child,values[key] if key in values else MISSING,parts[1:],meta,replacement,operation) if isinstance(values,dict) else walk(child,values[key],parts[1:],meta,replacement,operation)
+    if replacement is MISSING and operation is None:return value
     values[key]=value
     return repack(values,raw)
 
@@ -119,17 +119,41 @@ def describe(spec,raw,path):
     if limits:text+='\n  '+limits
     return text
 
-def help_paths(meta,parameters,path=None):
-    if path is None:
-        return '\n'.join(describe(s,parameters.get(s['name'],MISSING),[s['name']]) for s in meta['parameters']) or '未声明参数'
-    parts=path_parts(path);root=field(meta['parameters'],parts[0])
-    spec,raw=walk(root,parameters.get(parts[0],MISSING),parts[1:],meta)
-    lines=[describe(spec,raw,parts)]
-    if kind(spec).endswith('[]') or kind(spec).startswith('struct<'):
+def decode(spec,raw,meta):
+    """Decode declared fields to native values; unknown struct fields remain raw."""
+    if raw is MISSING:raise ValueError('Parameter is not configured')
+    t=kind(spec)
+    if t.endswith('[]') or t.startswith('struct<'):
         values,children=container(spec,raw,meta)
-        if isinstance(values,list):
-            for i in range(min(len(values),20)):lines.append(describe(children,values[i],parts+[i]))
-            if len(values)>20:lines.append(f'共 {len(values)} 项；直接指定下标深入查询。')
-        else:
-            lines.extend(describe(s,values.get(s['name'],MISSING),parts+[s['name']]) for s in children)
-    return '\n'.join(lines)
+        if isinstance(values,list):return [decode(children,v,meta) for v in values]
+        result=values.copy()
+        for s in children:
+            if s['name'] in result:result[s['name']]=decode(s,result[s['name']],meta)
+        return result
+    if t=='note':
+        result=json.loads(raw)
+        if not isinstance(result,str):raise ValueError('Invalid note')
+        return result
+    if t=='boolean':
+        if raw in ('true',True):return True
+        if raw in ('false',False):return False
+        raise ValueError('Invalid boolean')
+    if t=='number':
+        result=json.loads(raw) if isinstance(raw,str) else raw
+        if type(result) not in (int,float):raise ValueError('Invalid number')
+        return result
+    return raw
+
+
+def default_value(spec,meta,seen=()):
+    """Decode explicitly declared defaults for a new array item."""
+    if 'default' in spec:return decode(spec,spec['default'],meta)
+    t=kind(spec)
+    if t.endswith('[]'):raise ValueError('No declared default: '+spec['name'])
+    if t.startswith('struct<'):
+        name=t[7:-1]
+        if name in seen:raise ValueError('Recursive default requires explicit values')
+        fields=meta['structs'].get(name)
+        if fields is None:raise ValueError('Missing struct '+name)
+        return {s['name']:default_value(s,meta,seen+(name,)) for s in fields if 'default' in s or kind(s).startswith('struct<')}
+    raise ValueError('No declared default: '+spec['name'])

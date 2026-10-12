@@ -13,21 +13,21 @@ description: 启动或附加 RPG Maker MZ 的 NW.js 游戏，动态查询测试�
 - 需要动态命令、读档、HUD 或金手指时先检查工程是否已有兼容 Debug。按用户需求安装，不因测试就自动修改插件配置。
 - 用户要求这些能力且工程尚无实现时，可安装随附 assets/Debug.js 到 js/plugins/playtest/Debug.js；同名现有文件先核对，不覆盖用户定制。
 - 安装、启用、排序、卸载清单均使用[插件技能](../rpgmaker-plugins/SKILL.md)的正式脚本。移除注册与删除源码是两件事。
-- Debug 仅在 `?test` 模式启用。普通启动不公开接口、不创建 HUD。反引号显隐、`/` 输入、Escape 退出；命令行目前只回显，不执行命令。
+- Debug 仅在引擎 test 模式启用（NW.js 的 `test` 参数或 `?test`）。普通启动不公开接口、不创建 HUD。反引号显隐、`/` 输入、Escape 退出；命令行目前只回显，不执行命令。
 
 ## 测试流程
 
-1. 用 `session.launch(project, executable, port)` 上下文启动独立 NW.js 进程；自动添加测试参数。Windows 传 nw.exe，macOS 传应用内 Contents/MacOS/nwjs。Windows/Linux 尚未实机验证。
-2. 如需游戏命令，执行 `game.check_debug()`，然后 `commands()` 获取命令列表，`help(name)` 获取参数。没有列出的命令不猜测。
-3. 用 `game.call(name, **args)` 调用；游戏端 Promise 完成才返回。当前内置 state/loadGame；loadGame 使用 Scene_Load 引擎流程，等待地图就绪，不等待地图剧情结束。
+1. 用 `session.launch(project, executable, port)` 上下文启动独立 NW.js 进程；启动时直接传入 `test` 参数，连接后等待引擎就绪并验证测试模式，不导航或刷新页面。Windows 传 nw.exe，macOS 传应用内 Contents/MacOS/nwjs。Windows/Linux 尚未实机验证。
+2. 如需游戏命令，执行 `game.check_debug()`，然后 `commands()` 获取并缓存命令列表，`help(name)` 使用缓存。新增子插件命令或页面重载后用 `commands(refresh=True)` 刷新。没有列出的命令不猜测。
+3. 用 `game.call(name, timeout=45, **args)` 调用；游戏端 Promise 完成才返回。当前内置 state/loadGame；loadGame 使用 Scene_Load 引擎流程，等待地图就绪，不等待地图剧情结束。
 4. 截图使用 `game.screenshot(path)`。核对实际状态和画面；读档成功不等于剧情通过。默认不保存、不覆盖存档。
-5. 测试完成或失败都退出上下文，关闭本次启动的进程；不能只断开调试连接。附加已有窗口用 `Game(port)`，close 只断开连接，不擅自关闭用户进程。
+5. 测试完成或失败都退出上下文，关闭本次启动的进程组（macOS/Linux）或进程树（Windows Job Object，初始化失败时 taskkill /T 清理）；不能只断开调试连接。附加已有窗口用 `Game(port)`，close 只断开连接，不擅自关闭用户进程。
 
-连接限本机。端口被占用、多游戏页面、缺少插件、命令异常或超时均停止并报告。超时不代表操作被撤销，不自动重发读档等操作。页面重载后重新检查能力。当前传输为单请求串行，不并发调用一个 Game。
+连接限本机。端口被占用、多游戏页面、缺少插件、命令异常均报告。调用超时抛出 `OperationTimeout`，携带 `operation_id`；用 `game.operation(id)` 重连查询 running/succeeded/failed/unknown，完成时包含 result 或 error。超时不撤销操作，不自动重发。unknown 表示页面已重载、结果已清理或请求未到达，不能当作未执行。游戏端失败也不保证引擎副作用已撤销。页面重载后重新检查能力。当前传输为单请求串行，不并发调用一个 Game。
 
 ## 扩展规则
 
-Debug.js 是基础框架，通常不修改它。工程专用命令、金手指、控件和界面调整写在子插件中，加载顺序放在 Debug 之后。基础框架缺陷需要修复时单独说明并验证，不把项目逻辑混进去。
+Debug.js 是基础框架，通常不修改它。本次超时追踪修复将协议升级为 version 2；客户端要求配套版本，工程已安装副本不会自动更新。工程专用命令、金手指、控件和界面调整写在子插件中，加载顺序放在 Debug 之后。基础框架缺陷需要修复时单独说明并验证，不把项目逻辑混进去。
 
 子插件用 `Debug.register(name, {description, parameters, handler})` 注册，agent 自动发现；目前参数校验支持整数及最小值。其他类型先扩展并测试基础校验，不能写未被校验器支持的声明。名称禁止重复。参考[子插件示例](examples/Debug_Project.js)。
 

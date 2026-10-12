@@ -12,12 +12,12 @@
 ## 输入与输出
 
 ```text
-python3 <skill>/scripts/plugins_js.py --file <project>/js/plugins.js inspect
-python3 <skill>/scripts/plugins_js.py --file <project>/js/plugins.js validate
-python3 <skill>/scripts/plugins_js.py --file <project>/js/plugins.js apply --plan <plan.json>
-python3 <skill>/scripts/plugins_js.py --file <project>/js/plugins.js apply --plan <plan.json> --write --expect-sha256 <sha256>
-python3 <skill>/scripts/plugins_js.py --file <project>/js/plugins.js restore --backup <backup.js>
-python3 <skill>/scripts/plugins_js.py --file <project>/js/plugins.js restore --backup <backup.js> --write --expect-sha256 <sha256>
+python3 <skill>/scripts/plugins.py --file <project>/js/plugins.js inspect
+python3 <skill>/scripts/plugins.py --file <project>/js/plugins.js validate
+python3 <skill>/scripts/plugins.py --file <project>/js/plugins.js apply --plan <plan.json>
+python3 <skill>/scripts/plugins.py --file <project>/js/plugins.js apply --plan <plan.json> --write --expect-sha256 <sha256>
+python3 <skill>/scripts/plugins.py --file <project>/js/plugins.js restore --backup <backup.js>
+python3 <skill>/scripts/plugins.py --file <project>/js/plugins.js restore --backup <backup.js> --write --expect-sha256 <sha256>
 ```
 
 必须显式指定现存的 `plugins.js`，不搜索或猜测项目，不创建缺失文件，不接受目标文件为符号链接。`inspect` 输出全部条目与源文件 SHA-256；加 `--summary` 仅输出名称、启停、参数数量，加 `--name "子目录/名称"` 选择唯一条目。`validate` 校验语法范围和字段类型。所有成功结果为 stdout JSON；操作错误为 stderr JSON、退出码 1；命令行用法错误由 argparse 返回退出码 2。

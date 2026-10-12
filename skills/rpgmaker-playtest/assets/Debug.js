@@ -30,7 +30,28 @@
         });
     }
     class DebugCore {
-        constructor() { this.version = 1; }
+        constructor() { this.version = 2; this.operations = new Map(); }
+        async track(id, name, args) {
+            if (this.operations.has(id)) throw new Error('Duplicate operation ID');
+            if (!commands.has(name)) throw new Error('Unknown command: ' + name);
+            const operation = {id, name, status: 'running'};
+            this.operations.set(id, operation);
+            // Retain running operations and the latest 100 completed results.
+            const completed = [...this.operations.values()].filter(x => x.status !== 'running');
+            for (const old of completed.slice(0, Math.max(0, completed.length - 99))) this.operations.delete(old.id);
+            try {
+                operation.result = await this[name](args);
+                operation.status = 'succeeded';
+                return operation.result;
+            } catch (error) {
+                operation.error = String(error?.stack || error);
+                operation.status = 'failed';
+                throw error;
+            }
+        }
+        operation(id) {
+            return this.operations.get(id) || {id, status: 'unknown'};
+        }
         commands() { return Array.from(commands.values()); }
         register(name, {description, parameters = {}, handler}) {
             if (!/^[A-Za-z][A-Za-z0-9]*$/.test(name) || name in this) throw new Error('Invalid or duplicate command');

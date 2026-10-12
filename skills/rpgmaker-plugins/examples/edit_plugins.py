@@ -2,7 +2,7 @@
 from pathlib import Path
 import sys
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
-from plugin_api import Plugins
+from plugins import Plugins
 
 def enable_debug(project):
     plugins=Plugins(project)
@@ -14,7 +14,7 @@ def enable_debug(project):
 
 def edit_parameters(project, plugin_name):
     plugins=Plugins(project)
-    print(plugins.parameter_help(plugin_name))
+    print(plugins.get(plugin_name).help())
     # 仅在查询结果确实声明这些字段和类型时使用。
     plugins.set_parameter(plugin_name, ['Enabled'], True)
     plugins.set_parameter(plugin_name, ['Speed'], 4)

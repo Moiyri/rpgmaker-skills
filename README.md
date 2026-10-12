@@ -6,14 +6,13 @@
 
 - [SKILL.md](skills/rpgmaker-plugins/SKILL.md)：触发条件与 agent 工作流。
 - [脚本需求和接口](skills/rpgmaker-plugins/references/script-contract.md)：支持范围、JSON 计划、写入保证及失败边界。
-- [plugin.py](skills/rpgmaker-plugins/scripts/plugin.py)：查询插件列表、安装／注册／启用状态、当前参数和命令帮助；默认简短文本。命令帮助依赖相邻事件技能及其数据库依赖。
-- [plugins_js.py](skills/rpgmaker-plugins/scripts/plugins_js.py)：Python 3.10+ 标准库实现。
+- [plugins.py](skills/rpgmaker-plugins/scripts/plugins.py)：统一 Python API 与 CLI，查询插件、参数帮助并安全修改清单；仅依赖 Python 3.10+ 标准库。
 - [行为测试](tests/test_plugins_js.py)：解析、修改、预览、备份、恢复及失败不落盘。
 
 支持 RPG Maker MV/MZ 编辑器式 `js/plugins.js`：读取、校验、增删注册、启停、描述和参数更新、顺序调整、恢复。不会执行 JavaScript。默认只预览，显式写入要求当前文件 SHA-256，并先创建备份。
 
 ```sh
-python3 skills/rpgmaker-plugins/scripts/plugins_js.py --file "/path/to/project/js/plugins.js" inspect --summary
+python3 skills/rpgmaker-plugins/scripts/plugins.py --file "/path/to/project/js/plugins.js" inspect --summary
 python3 -m unittest discover -s tests -v
 ```
 
@@ -27,7 +26,7 @@ RPGMAKER_TEST_PROJECT="/path/to/project" python3 -m unittest discover -s tests -
 
 首版用 Project1 的 MZ 配置进行只读分析及副本验证，记录见[验证说明](skills/rpgmaker-plugins/references/project-validation.md)。未运行游戏 Playtest，MV 真实工程尚未验证。
 
-Veloria 的复杂嵌套参数测试见[验证记录](skills/rpgmaker-plugins/references/veloria-validation.md)：57 个插件、604 个参数，副本上测试全部 58 个多层参数及 1 个普通参数，最深 6 次 JSON 解码。可用 `python3 tests/probe_nested_project.py /path/to/js/plugins.js` 复现；正式脚本仍采用完整参数字符串输入，深层字段的解码与重新编码由调用方完成。
+Veloria 的复杂嵌套参数测试见[验证记录](skills/rpgmaker-plugins/references/veloria-validation.md)：57 个插件、604 个参数，副本上测试全部 58 个多层参数及 1 个普通参数，最深 6 次 JSON 解码。可用 `python3 tests/probe_nested_project.py /path/to/js/plugins.js` 复现；当前对象接口按插件声明处理嵌套字段，调用方提供路径和 Python 值即可。
 
 ## 第二个 skill：rpgmaker-database
 
@@ -57,4 +56,6 @@ python3 skills/rpgmaker-database/scripts/database.py --root "/path/to/project/da
 
 [技能入口](skills/rpgmaker-playtest/SKILL.md)：Python 标准库连接 NW.js，动态发现测试命令、读档及截图。内置可选 Debug.js，工程金手指通过子插件扩展。启动会话自动在结束时关闭本次进程；[读档示例](skills/rpgmaker-playtest/examples/load_game.py)。
 
-插件清单可使用 [Plugins 对象接口](skills/rpgmaker-plugins/scripts/plugin_api.py) 完成注册增删、参数修改、启停与排序，统一预览后提交。
+插件清单可使用 [Plugins 对象接口](skills/rpgmaker-plugins/scripts/plugins.py) 完成注册增删、参数修改、启停与排序，统一预览后提交。
+
+插件帮助支持顶层结构和指定结构体；`Plugins.get(name).parameters` 提供声明驱动的路径读取、修改及数组新增。测试示例见 [VisuMZ Message 新增语言](skills/rpgmaker-plugins/examples/add_message_language.py)。

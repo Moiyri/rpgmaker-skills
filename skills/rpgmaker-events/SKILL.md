@@ -11,7 +11,7 @@ description: 查询、编写和修改 RPG Maker MZ 公共事件指令及地图�
 
 ## 依赖与接口
 
-Python 3.10+，仅标准库。必须同时分发相邻的 `../rpgmaker-database/`，保留两个 skill 的目录结构；写入和恢复由其正式 `scripts/database.py` 承担。执行工程修改前阅读[数据库 skill](../rpgmaker-database/SKILL.md)。依赖缺失时先补齐，不绕过后端写文件。
+Python 3.10+，仅标准库。插件声明帮助依赖相邻 `../rpgmaker-plugins/`；必须同时分发相邻的 `../rpgmaker-database/`，保留两个 skill 的目录结构；写入和恢复由其正式 `scripts/database.py` 承担。执行工程修改前阅读[数据库 skill](../rpgmaker-database/SKILL.md)。依赖缺失时先补齐，不绕过后端写文件。
 
 `<skill>` 表示本文件所在目录，`<project>` 表示含 data、js 的工程根目录。
 
