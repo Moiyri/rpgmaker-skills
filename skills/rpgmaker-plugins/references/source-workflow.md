@@ -6,7 +6,7 @@
 
 ## 修改
 
-源码文件可正常编辑，保持工程风格，保留不相关行为。参数配置必须走正式清单脚本；不是替换源码中的默认值。先 plugins.py help 查看顶层字段，help --struct 名称查看结构体，parameters 查看当前值。
+源码文件可正常编辑，保持工程风格，保留不相关行为。参数配置必须走正式清单脚本；不是替换源码中的默认值。先 plugins.py manual 阅读用法，再 plugins.py help 查看顶层字段，help --struct 名称查看结构体，parameters 查看当前值。
 
 参数修改先调用 `plugins.get(name).help(struct)`，根据字段声明构建路径并使用 `set_parameter(name, path, value)`，不让 agent 逐层 loads/dumps。结构体、数组、note 由脚本处理编码；不猜测缺失声明。删参数使用 unset_parameters。改名称或路径时先检查插件内部如何取得 PluginManager 参数、命令注册名及其他插件依赖，不仅改文件名。
 
@@ -17,3 +17,5 @@
 ## 验证
 
 配置写入后重新查询；源码修改运行 node --check，再按需用 playtest 技能测试实际行为。文件校验不等于游戏测试。记录修改与验证范围；不自动修改工程数据库以消除报错。
+
+仅配置参数时不直接翻源码注释，遵循技能入口的帮助接口优先流程；只有接口缺失必要信息或需定位实际行为差异时才定向读取源码。

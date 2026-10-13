@@ -67,6 +67,11 @@ class Plugin(dict):
     def __init__(self,owner,record):
         super().__init__(record);self.owner=owner;self.parameters=Parameters(self);self.commands=Commands(self)
     def help(self,struct=None):return self.parameters.help(struct)
+    def manual(self,*,language='zh'):
+        """读取插件用法说明；参数结构仍使用 help(struct)。"""
+        from .declarations import plugin_help
+        return plugin_help(self.owner.file.parent.parent,self['name'],language=language,section='help')
+
 
 def structure_help(meta,struct=None):
     """列出顶层参数或指定结构体的直接字段，不展开实例数据。"""

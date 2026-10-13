@@ -183,6 +183,15 @@ def plugin_help(project, plugin, *, struct=None, language='zh') -> str:
     return structure_help(_plugin_metadata(root,name,language=language),struct)
 
 
+def plugin_manual(project, plugin, *, language='zh') -> str:
+    """读取插件 @help 使用说明，不执行源码；缺失说明明确返回提示。"""
+    root,records,files = _inventory(project)
+    name,_ = _select(records,files,plugin)
+    if name not in files:raise ValueError('插件文件不存在：'+name)
+    from plugin_core.declarations import plugin_help as declaration_help
+    return declaration_help(root,name,language=language,section='help')
+
+
 def main():
     if any(arg == "--file" or arg.startswith("--file=") for arg in sys.argv[1:]):
         return storage.main()
@@ -190,17 +199,17 @@ def main():
     parser.add_argument('--project',required=True)
     sub=parser.add_subparsers(dest='action',required=True)
     p=sub.add_parser('list');p.add_argument('--search',default='');p.add_argument('--enabled',action='store_true')
-    for action in ('check','parameters','help'):
+    for action in ('check','parameters','help','manual'):
         p=sub.add_parser(action);p.add_argument('--plugin',required=True)
         if action=='parameters':p.add_argument('--parameter')
-        if action=='help':
-            p.add_argument('--struct')
-            p.add_argument('--language',default='zh')
+        if action=='help':p.add_argument('--struct')
+        if action in ('help','manual'):p.add_argument('--language',default='zh')
     args=parser.parse_args()
     try:
         if args.action=='list':result=list_plugins(args.project,search=args.search,enabled_only=args.enabled)
         elif args.action=='check':result=check_plugin(args.project,args.plugin)
         elif args.action=='parameters':result=plugin_parameters(args.project,args.plugin,parameter=args.parameter)
+        elif args.action=='manual':result=plugin_manual(args.project,args.plugin,language=args.language)
         else:result=plugin_help(args.project,args.plugin,struct=args.struct,language=args.language)
         print(result);return 0
     except (ValueError,OSError,UnicodeError) as exc:
