@@ -7,7 +7,7 @@ description: 查询、编写和修改 RPG Maker MZ 公共事件指令及地图�
 
 使用 `scripts/event_api.py` 的对象接口维护指令，使用 `scripts/events.py` 管理事件指令，使用 `scripts/map_events.py` 管理整个地图事件、事件页和全局引用搜索。禁止直接编辑工程 JSON、文本替换或另写脚本覆盖目标数据库。可以写调用接口的 Python 程序和独立计划文件。
 
-编写事件前阅读[最佳实践](references/best-practices.md)。标签使用可读语言，可用中文；英文首字母大写，词间用空格，不用下划线或连字符。事件转向可用于分阶段动画，阶段间通常等待 3 帧；踏步用于静止循环动画，具体帧布局以素材为准。灯台、书、盆栽等没有转向动画的物件应开启固定朝向，避免交互时显示错误图案。临时图片使用完成后必须消除；渐显渐隐按最佳实践的顺序编写。Note 默认留空或保留原值，仅用于明确的插件标签等特殊用途；逻辑说明使用 Comment 指令。地图事件名称保持简短；公共事件中文命名为 `事件ID:【类别】事件名`，英文为 `事件ID:<Category>Event Name`；ID 至少三位补零。
+场景下的事件制作方法统一由 producer 的[事件制作指南](../rpgmaker-producer/references/event-production.md)维护；编写相关事件前按场景读取。事件、标签及列表分隔的命名见[命名规则](../rpgmaker-producer/references/naming-rules.md)。本技能负责接口与工程读写，不重复维护制作约定。
 
 ## 依赖与接口
 
@@ -36,9 +36,9 @@ Python 3.10+，仅标准库。插件声明帮助依赖相邻 `../rpgmaker-plugin
 - [operands.py](scripts/event_core/operands.py)：操作数；Game Data 使用 ScriptValue 表达式读取。
 - [map_events.py](scripts/event_core/map_events.py)：MapDocument、MapEvent、EventPage，读取和维护地图事件与页面。
 - [event_search.py](scripts/event_core/event_search.py)：按事件名、开关／变量 ID 全局搜索，列出地图事件。
-- [物品使用公共事件](examples/item_common_event.py)：位置及有效性检查、特殊误用提示、失败标签、成功后可选扣除物品。
-- [门事件](examples/door.py)：创建确定键交互的门，可用解锁开关区分锁门／开门页；平时固定朝向，动画时临时解除，随后玩家前进、传送；命名为 门（目的）或 Door（目的）。
-- [一次性物品拾取](examples/one_time_pickup.py)：从创建事件开始，闪光动画、获得物品、独立开关 A、空白隐藏页。
+- [物品使用公共事件示例](examples/item_common_event.py)：对象接口调用示例，制作流程见 producer 的事件制作指南。
+- [门事件示例](examples/door.py)：对象接口调用示例，制作流程见 producer 的事件制作指南。
+- [一次性物品拾取示例](examples/one_time_pickup.py)：对象接口调用示例，制作流程见 producer 的事件制作指南。
 - [地图编辑示例](examples/map_event.py)：修改名称、编辑第一页并复制条件页。
 - [event_list.py](scripts/event_core/event_list.py)：列表增删改查、编译和计划导出。
 - [公共事件 165 示例](examples/common165.py)：嵌套条件与循环，输出整段替换计划。

@@ -2,6 +2,8 @@
 
 用于 RPG Maker 工程操作的可独立分发 skills。先实现可验证的文件操作脚本，再由 skill 指导 agent 调用；目标文件修改必须经过脚本。
 
+[RM 项目架构](skills/rpgmaker-producer/references/project-architecture.md)：游戏工程的地图、数据库等组织约定，当前已记录系统地图分区与入口点。
+
 ## 插件：rpgmaker-plugins
 
 - [SKILL.md](skills/rpgmaker-plugins/SKILL.md)：触发条件与 agent 工作流。
@@ -59,3 +61,18 @@ python3 skills/rpgmaker-database/scripts/database.py --root "/path/to/project/da
 插件清单可使用 [Plugins 对象接口](skills/rpgmaker-plugins/scripts/plugins.py) 完成注册增删、参数修改、启停与排序，统一预览后提交。
 
 插件帮助支持顶层结构和指定结构体；`Plugins.get(name).parameters` 提供声明驱动的路径读取、修改及数组新增。测试示例见 [VisuMZ Message 新增语言](skills/rpgmaker-plugins/examples/add_message_language.py)。
+
+## 制作人：rpgmaker-producer
+
+[技能入口](skills/rpgmaker-producer/SKILL.md)：讨论需求与素材，确认完整目标和最小目标，协调工程技能交付可运行模块。用户确认方案后实施，最小目标完成先交用户体验。
+
+- [项目目录架构](skills/rpgmaker-producer/references/project-directories.md)：RM 工程目录树、素材存放位置与加载要求。
+- [事件制作指南](skills/rpgmaker-producer/references/event-production.md)：场景下的事件制作方法，统一由制作人技能维护。
+- [插件开发规范](skills/rpgmaker-producer/references/plugin-development.md)：声明、参数、命令、帮助、配置和存档约定。
+- [备选插件库](skills/rpgmaker-producer/references/plugin-library.md)：用户提供的候选及选型边界；首批收录用户选定的 Core Engine、Message Core、Save Core，以及地图缩放 Zoom。
+
+制作人技能本身不另设写入脚本；实施时需要相邻的 rpgmaker-plugins、rpgmaker-database、rpgmaker-events 和 rpgmaker-playtest，请随工具集一起分发。备选库不包含第三方插件源码，也不自动安装或启用插件。
+
+[制作手记](skills/rpgmaker-producer/production-notes/index.md)：独立积累用户的制作经验与插件搭配，已涵盖分辨率、镜头、配音、立绘、本地化和脚步声等主题。
+
+制作人技能同时维护[命名规则](skills/rpgmaker-producer/references/naming-rules.md)、[项目管理](skills/rpgmaker-producer/references/project-management.md)及[项目文档总目录模板](skills/rpgmaker-producer/references/docs-index-template.md)。

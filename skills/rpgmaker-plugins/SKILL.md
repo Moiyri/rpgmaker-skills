@@ -9,6 +9,22 @@ description: 查询 RPG Maker 工程插件列表、安装注册及启用状态�
 
 查询返回简短文本，不执行 JavaScript；只解析编辑器式 plugins.js。声明解析、结构帮助和参数编码均随本技能分发，不依赖事件技能。事件技能复用这里的声明解析器，不猜测命令参数。
 
+命名约定统一由 producer 的[命名规则](../rpgmaker-producer/references/naming-rules.md)维护；新建或重命名相关条目时读取，接口与格式限制仍遵循本技能。
+
+## 阅读顺序：先用法，再参数
+
+读取或修改插件参数时，先用 `plugin.manual()` 或 CLI `manual` 阅读插件的使用帮助，理解功能、前置要求和参数之间的关系；随后使用 `parameters.list()` 定位所需结构，通过 `help()` / `help("结构体名")` 获取相关字段声明，再用 `parameters.get(path)` 读取当前值。只查询任务所需结构，不一次展开全部嵌套参数。
+
+```sh
+python3 "<skill>/scripts/plugins.py" --project "<project>" manual --plugin "ui/LL_StandingPicture"
+```
+
+`manual` 提取 @help，支持 `--language` 及声明语言回退；Python 为 `plugin.manual(language="zh")`。它与参数结构 `help` 是不同入口。帮助已在当前任务中读过且文件未变化时无需重复读取。
+
+默认不要直接阅读插件源码注释来找参数或用法。仅当帮助缺失、解析失败、接口没有覆盖必要信息，或帮助与实际行为矛盾而必须排查时，才定向读取相关源码片段并说明原因；不得因为接口返回错误就整份倾倒源码。解析器缺陷应修复正式接口并验证。真正的源码开发或运行逻辑排错仍可按需阅读实现。
+
+修改顺序：用法帮助 → 参数目录/相关结构帮助 → 当前值 → `parameters.set/append` → `preview()` → `commit(preview)` → 重新读取核对。命令需求使用 `commands.list()` / `commands.help(id)`，不混用参数与命令声明。
+
 ## 查询与帮助
 
 统一从 `plugins.py` 导入 `Plugins`。help 只查询顶层结构和指定结构体，按“字段 | 用途 | 类型”分列，分组作为标题，过滤装饰项；长选项列表去重并集中列出，保留数值限制，不展开配置实例或长脚本。字段用途沿用插件声明名称，不维护额外翻译表。
@@ -17,6 +33,7 @@ description: 查询 RPG Maker 工程插件列表、安装注册及启用状态�
 from plugins import Plugins
 plugins = Plugins(project)
 plugin = plugins.get("Liy_Graphics")
+print(plugin.manual())                 # 先阅读插件使用说明
 print(plugin.parameters.list())      # 全部顶层参数和结构体名称
 print(plugin.parameters.list("Map")) # 该结构体全部字段和类型
 print(plugin.help())                 # 顶层参数详情

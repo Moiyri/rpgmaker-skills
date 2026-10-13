@@ -7,6 +7,8 @@ description: 读取和修改 RPG Maker MV/MZ 工程数据库的任意 JSON 字�
 
 对数据库的任何修改都使用此 skill，不因字段未登记、位于地图/事件中或属于插件自定义数据而绕过。使用本 skill 的 `scripts/database.py` 读取、预览、写入与恢复；禁止直接编辑目标 JSON、apply_patch、文本替换或另写临时脚本覆盖数据库。可以编写独立操作计划，测试夹具的创建不受此限制。
 
+命名约定统一由 producer 的[命名规则](../rpgmaker-producer/references/naming-rules.md)维护；新建或重命名相关条目时读取，接口与格式限制仍遵循本技能。
+
 ## 物品对象接口
 
 修改物品优先使用 `scripts/database_api.py` 的 `Database` 对象，无需手写 JSON 计划。先阅读 [物品接口](references/item-api.md) 与 [入门示例](examples/items.py)：列出／搜索物品，使用 create／clear 创建和清空，使用 references 查询引用，按 ID 获取后修改属性、伤害及使用效果，调用 `preview()` 核对，再 `commit(preview)`。该接口通过正式 `database.py` 后端写入和备份，不直接覆盖工程文件。未知字段与效果保留，未封装的操作仍使用下述通用脚本。

@@ -1,0 +1,4 @@
+interface:
+  display_name: "RPG Maker 制作人"
+  short_description: "整理游戏需求、确认制作方案，协调插件与事件技能交付可运行模块"
+  default_prompt: "使用 $rpgmaker-producer 与我讨论制作需求，先检查工程和素材，再整理完整目标与最小目标供我确认。"
