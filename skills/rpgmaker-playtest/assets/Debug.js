@@ -30,7 +30,7 @@
         });
     }
     class DebugCore {
-        constructor() { this.version = 2; this.operations = new Map(); }
+        constructor() { this.operations = new Map(); }
         async track(id, name, args) {
             if (this.operations.has(id)) throw new Error('Duplicate operation ID');
             if (!commands.has(name)) throw new Error('Unknown command: ' + name);
@@ -94,6 +94,153 @@
             } finally { scene.onLoadFailure = originalFailure; }
         }
     });
+    // Hooks are independent of registered game commands.
+    const configPath = typeof process !== 'undefined' ? process.env.RM_EVENT_TEST_CONFIG : null;
+    const config = configPath ? JSON.parse(require('fs').readFileSync(configPath, 'utf8')) : null;
+    const fields = {
+        'game.ready': [], 'runtime.error': ['origin'], 'runtime.warning': ['origin'],
+        'event.start': ['mapId','eventId','commonEventId','executionId','parentId'],
+        'event.call': ['mapId','eventId','commonEventId','executionId','parentId'],
+        'event.command': ['mapId','eventId','commonEventId','executionId','parentId','index','sourceIndex','code','phase'],
+        'event.end': ['mapId','eventId','commonEventId','executionId','parentId'],
+        'variable.change': ['id','value'], 'switch.change': ['id','value']
+    };
+    const hooks = new Map(), groups = new Map(), records = [];
+    let finish = false, ready = false, executionCounter = 0, parent = null, callingCommon = null;
+    const executions = new WeakMap();
+    const clone = value => {
+        if (value === undefined) return null;
+        try { return JSON.parse(JSON.stringify(value)); }
+        catch (_) { return String(value); }
+    };
+    const equal = (a,b) => JSON.stringify(a) === JSON.stringify(b);
+    function emit(on, data = {}) {
+        const matched = [];
+        for (const h of hooks.values()) {
+            if (h.active && h.on === on && Object.entries(h.match).every(([k,v]) => equal(data[k],v))) {
+                matched.push(h.id);
+                if (h.once) h.active = false;
+                if (h.action === 'finish') finish = true;
+            }
+        }
+        if (matched.length) records.push({time: Date.now(), signal: on, hooks: matched, ...clone(data)});
+        reconcile();
+    }
+    function install(group) {
+        const restores = [];
+        const wrap = (object, name, build) => {
+            const original = object[name], replacement = build(original);
+            object[name] = replacement;
+            restores.push(() => { if (object[name] === replacement) object[name] = original; });
+        };
+        const listen = (name, fn) => {
+            window.addEventListener(name, fn);
+            restores.push(() => window.removeEventListener(name, fn));
+        };
+        const error = (origin, value) => emit('runtime.error', {origin,
+            message: String(value?.message || value), stack: String(value?.stack || '')});
+        if (group === 'ready') {
+            wrap(Scene_Map.prototype, 'start', original => function() {
+                const result = original.apply(this, arguments);
+                if (!ready) { ready = true; emit('game.ready', state()); }
+                return result;
+            });
+        } else if (group === 'error') {
+            listen('error', e => error('window.error', e.error || e.message));
+            listen('unhandledrejection', e => error('unhandledrejection', e.reason));
+            wrap(SceneManager, 'catchException', original => function(e) {
+                error('SceneManager.catchException', e); return original.apply(this, arguments);
+            });
+            wrap(console, 'error', original => function(...args) {
+                error('console.error', args.map(x => String(x?.stack || x)).join(' '));
+                return original.apply(this,args);
+            });
+        } else if (group === 'warning') {
+            wrap(console, 'warn', original => function(...args) {
+                emit('runtime.warning', {origin: 'console.warn', message: args.map(String).join(' ')});
+                return original.apply(this,args);
+            });
+        } else if (group === 'variable' || group === 'switch') {
+            const proto = group === 'variable' ? Game_Variables.prototype : Game_Switches.prototype;
+            wrap(proto, 'setValue', original => function(id,value) {
+                const oldValue = clone(this.value(id));
+                const result = original.apply(this,arguments);
+                const newValue = clone(this.value(id));
+                if (!equal(oldValue,newValue)) emit(group+'.change', {id,oldValue,newValue,value:newValue});
+                return result;
+            });
+        } else if (group === 'event') {
+            const info = obj => ({mapId: obj._mapId, eventId: obj._eventId, ...executions.get(obj)});
+            wrap(Game_Interpreter.prototype, 'setup', original => function(list,eventId) {
+                const result = original.apply(this,arguments);
+                executions.set(this, {executionId: ++executionCounter,
+                    parentId: parent ? executions.get(parent)?.executionId ?? null : null,
+                    commonEventId: callingCommon ?? (config && list === config.commands ? config.source.common_event_id ?? null : null),
+                    sourceOffset: config && list === config.commands ? config.range[0] : null});
+                emit('event.start', info(this)); return result;
+            });
+            wrap(Game_Interpreter.prototype, 'setupChild', original => function() {
+                const previous = parent; parent = this;
+                try { return original.apply(this,arguments); } finally { parent = previous; }
+            });
+            wrap(Game_Interpreter.prototype, 'command117', original => function(params) {
+                const previous = callingCommon;
+                callingCommon = params[0];
+                if ($dataCommonEvents[params[0]]) emit('event.call', {...info(this),commonEventId:params[0]});
+                try { return original.apply(this,arguments); } finally { callingCommon = previous; }
+            });
+            wrap(Game_Interpreter.prototype, 'executeCommand', original => function() {
+                const cmd = this.currentCommand(), index = this._index;
+                const data = {...info(this), index,
+                    sourceIndex: executions.get(this)?.sourceOffset != null ? executions.get(this).sourceOffset+index : null,
+                    code: cmd?.code};
+                if (cmd) emit('event.command', {...data,phase:'before'});
+                const result = original.apply(this,arguments);
+                if (cmd && result) emit('event.command', {...data,phase:'after'});
+                return result;
+            });
+            wrap(Game_Interpreter.prototype, 'terminate', original => function() {
+                const running = !!this._list, data = info(this);
+                const result = original.apply(this,arguments);
+                if (running) emit('event.end',data);
+                return result;
+            });
+        }
+        return () => { for (const restore of restores.reverse()) restore(); };
+    }
+    function groupFor(on) {
+        if (on.startsWith('event.')) return 'event';
+        return {'game.ready':'ready','runtime.error':'error','runtime.warning':'warning',
+                'variable.change':'variable','switch.change':'switch'}[on];
+    }
+    function reconcile() {
+        const needed = new Set([...hooks.values()].filter(h => h.active).map(h => groupFor(h.on)));
+        for (const [group,restore] of groups) if (!needed.has(group)) { restore(); groups.delete(group); }
+        for (const group of needed) if (!groups.has(group)) groups.set(group,install(group));
+    }
+    api.hooks = {
+        add(h) {
+            if (!h || typeof h.id !== 'string' || !h.id.trim() || hooks.has(h.id)) throw new Error('Invalid or duplicate hook ID');
+            if (!Object.hasOwn(fields,h.on) || !['record','finish'].includes(h.action) || typeof h.once !== 'boolean') throw new Error('Invalid hook');
+            if (!h.match || typeof h.match !== 'object' || Array.isArray(h.match) || Object.keys(h.match).some(k => !fields[h.on].includes(k))) throw new Error('Invalid hook filters');
+            hooks.set(h.id,{...clone(h),active:true}); reconcile(); return clone(hooks.get(h.id));
+        },
+        list() { return clone([...hooks.values()]); },
+        remove(id) { const removed=hooks.delete(id); reconcile(); return removed; },
+        clear() { hooks.clear(); reconcile(); },
+        poll(cursor=0) { return {events:clone(records.slice(cursor)),cursor:records.length,finish}; }
+    };
+    if (config) {
+        for (const h of config.hooks) if (Object.hasOwn(fields,h.on)) api.hooks.add(h);
+        // Event test boot and save redirection are separate from hook observation.
+        Scene_Boot.prototype.startNormalGame = function() {
+            window.$testEvent = config.commands;
+            DataManager.setupEventTest();
+            SceneManager.goto(Scene_Map);
+        };
+        StorageManager.fileDirectoryPath = () => config.saveDirectory + '/';
+    }
+
     class DebugControl {
         constructor(tag) { this.element = document.createElement(tag); }
         mount(parent) { parent.appendChild(this.element); return this; }
@@ -172,7 +319,12 @@
     window.Debug = api;
     api.classes = {DebugCore, DebugOverlay, DebugControl};
     const mount = () => {
+        // Place hook wrappers outside the HUD console wrappers so removal restores them.
+        for (const group of ['error','warning']) {
+            if (groups.has(group)) { groups.get(group)(); groups.delete(group); }
+        }
         api.overlay = new DebugOverlay(api);
+        reconcile();
     };
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount, {once:true});
     else mount();

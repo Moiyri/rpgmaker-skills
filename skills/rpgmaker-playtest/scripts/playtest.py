@@ -53,8 +53,8 @@ class Game:
         Path(path).write_bytes(base64.b64decode(result['data']))
     def check_debug(self):
         """验证已安装的 Debug；不自动注入或安装插件。"""
-        if not self.connection.evaluate("typeof Debug !== 'undefined' && Debug.version === 2"):
-            raise RuntimeError('Debug.js version 2 required; install only when requested, then start test mode')
+        if not self.connection.evaluate("typeof Debug !== 'undefined' && ['commands','track','operation'].every(name => typeof Debug[name] === 'function')"):
+            raise RuntimeError('Debug commands/track/operation interfaces required; check plugin enablement and test mode')
     def __enter__(self): return self
     def __exit__(self, *exc): self.close()
 

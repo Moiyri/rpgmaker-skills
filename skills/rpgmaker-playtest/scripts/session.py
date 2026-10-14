@@ -1,13 +1,17 @@
 """启动独立 NW.js 测试会话；上下文结束时关闭自己启动的进程。"""
-from contextlib import contextmanager
+from contextlib import contextmanager, ExitStack
 from pathlib import Path
 import socket
+import json
 import os
 import signal
 import subprocess
 import tempfile
 import time
 from playtest import Game
+
+class HookFinished(RuntimeError):
+    """A startup hook ended the session before a game connection was available."""
 
 class WindowsJob:
     """Job Object 保留对子进程的所有权，主进程退出后仍能清理。"""
@@ -59,6 +63,10 @@ def stop_process_tree(process, timeout=5):
         process.poll()
         try:os.killpg(process.pid,0)
         except ProcessLookupError:break
+        except PermissionError:
+            # After SIGTERM, macOS sandboxed NW children can deny group probing.
+            if process.poll() is None:raise
+            break
         time.sleep(.05)
     else:
         try:os.killpg(process.pid,signal.SIGKILL)
@@ -66,16 +74,35 @@ def stop_process_tree(process, timeout=5):
     process.wait(timeout=timeout)
 
 @contextmanager
-def launch(project, executable, port=19224, timeout=30):
+def launch(project, executable, port=19224, timeout=30, *, environment=None, log_path=None, observer=None, startup_poll=None):
     """project 为工程根目录，executable 为 nw.exe 或 nwjs 可执行文件。"""
     project=Path(project).resolve(strict=True)
     executable=Path(executable).resolve(strict=True)
     if not (project/'package.json').is_file():raise ValueError('Missing package.json')
     with socket.socket() as probe:probe.bind(('127.0.0.1',port))
-    with tempfile.TemporaryDirectory(prefix='rpgmaker-playtest-') as profile:
-        process=subprocess.Popen([str(executable),'--remote-debugging-address=127.0.0.1',f'--remote-debugging-port={port}',f'--user-data-dir={profile}',str(project),'test'],start_new_session=(os.name!='nt'),creationflags=(subprocess.CREATE_NEW_PROCESS_GROUP if os.name=='nt' else 0),stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+    env = os.environ.copy()
+    if environment:
+        env.update(environment)
+    with ExitStack() as resources:
+        log = resources.enter_context(open(log_path, 'wb')) if log_path else None
+        profile = resources.enter_context(tempfile.TemporaryDirectory(prefix='rpgmaker-playtest-'))
+        process=subprocess.Popen([str(executable),str(project),'test','--remote-debugging-address=127.0.0.1',f'--remote-debugging-port={port}',f'--user-data-dir={profile}'],start_new_session=(os.name!='nt'),creationflags=(subprocess.CREATE_NEW_PROCESS_GROUP if os.name=='nt' else 0),stdout=log or subprocess.DEVNULL,stderr=log or subprocess.DEVNULL,env=env,cwd=str(project))
         game=None;job=None
+        requested=False
+        exit_reported=False
+        def report_exit():
+            nonlocal exit_reported
+            if process.poll() is not None and not exit_reported:
+                exit_reported=True
+                if observer: observer('process.exit', pid=process.pid, code=process.returncode, requested=requested)
+        def stop_owned():
+            nonlocal requested
+            if process.poll() is None: requested=True
+            stop_process_tree(process)
+            report_exit()
         try:
+            if observer and observer('process.start', pid=process.pid):
+                raise HookFinished('process.start hook finished the session')
             if os.name=='nt':job=WindowsJob(process)
             deadline=time.monotonic()+timeout
             while time.monotonic()<deadline:
@@ -83,14 +110,19 @@ def launch(project, executable, port=19224, timeout=30):
                 try:game=Game(port);break
                 except (OSError,RuntimeError):time.sleep(.2)
             if game is None:raise TimeoutError('NW.js connection timeout')
+            game.stop_owned_process = stop_owned
+            game.owned_process = process
+            game.report_owned_exit = report_exit
             while time.monotonic()<deadline:
+                if startup_poll and startup_poll(game):
+                    raise HookFinished('A hook finished the session during startup')
                 if process.poll() is not None:raise RuntimeError('NW.js exited during startup')
                 try:
-                    status=game.connection.evaluate("({ready: typeof SceneManager !== 'undefined' && !!SceneManager._scene?.isStarted() && typeof DataManager !== 'undefined' && !!DataManager._globalInfo, test: typeof Utils !== 'undefined' && Utils.isOptionValid('test')})")
+                    status=game.connection.evaluate("({ready: typeof SceneManager !== 'undefined' && !!SceneManager._scene?.isStarted() && typeof DataManager !== 'undefined' && !!DataManager._globalInfo, test: typeof Utils !== 'undefined' && Utils.isOptionValid('test'), url: location.href, argv: typeof nw !== 'undefined' ? nw.App.argv : null, node: typeof process !== 'undefined' ? process.versions.node : null, error: document.querySelector('#errorPrinter')?.innerText || ''})")
                 except RuntimeError:
                     status=None  # 页面仍在初始化，稍后重试；不导航或刷新。
                 if status and status.get('ready'):
-                    if not status.get('test'):raise RuntimeError('NW.js did not enable test mode; check startup arguments')
+                    if not status.get('test'):raise RuntimeError('NW.js did not enable test mode; startup: '+json.dumps(status,ensure_ascii=False))
                     break
                 time.sleep(.2)
             else:raise TimeoutError('Game startup timeout')
@@ -99,8 +131,10 @@ def launch(project, executable, port=19224, timeout=30):
             try:
                 if game:game.close()
             finally:
+                if process.poll() is None: requested=True
                 if job is not None:
                     job.close()
                     process.wait(timeout=10)
                 else:
                     stop_process_tree(process)
+                report_exit()
