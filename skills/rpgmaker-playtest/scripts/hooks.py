@@ -54,9 +54,20 @@ class HookReport:
         self.status = 'running'
         self.finish = False
         self.error = None
+        self.started = time.time()
+        self.seq = 0
+        self.errors = 0
+        self.warnings = 0
+        self.end_reason = None
+        self.triggered_hook = []
+        self.process = None
         self.write()
 
     def append(self, entry):
+        self.seq += 1
+        entry = {**entry, 'seq': self.seq}
+        if entry['signal'] == 'runtime.error': self.errors += 1
+        if entry['signal'] == 'runtime.warning': self.warnings += 1
         with (self.directory / 'events.jsonl').open('a', encoding='utf-8') as stream:
             stream.write(json.dumps(entry, ensure_ascii=False) + '\n')
             stream.flush()
@@ -70,12 +81,17 @@ class HookReport:
                 if hook['action'] == 'finish': self.finish = True
         # Process lifecycle always retained to diagnose startup/exit, even without matching hooks.
         self.append({'time': int(time.time()*1000), 'signal': signal, 'hooks': hits, **data})
-        if signal == 'startup.failed': self.status = 'failed'; self.error = data
-        if signal == 'process.exit' and self.status == 'running': self.status = 'exited'
+        if signal == 'startup.failed':
+            self.status = 'failed'; self.error = data; self.end_reason = 'startup.failed'
+        if signal == 'process.exit':
+            self.process = {'exitCode': data['code'], 'closedByTool': data['requested']}
+            if self.status == 'running': self.status = 'exited'; self.end_reason = 'process.exit'
         self.write()
 
     def write(self):
         path = self.directory / 'session.json'
         tmp = path.with_suffix('.tmp')
-        tmp.write_text(json.dumps({'test': self.target, 'status': self.status, 'finish': self.finish, 'error': self.error}, ensure_ascii=False, indent=2), encoding='utf-8')
+        tmp.write_text(json.dumps({'test': self.target, 'status': self.status, 'finish': self.finish, 'error': self.error, 'endReason': self.end_reason,
+            'triggeredHook': self.triggered_hook, 'durationMs': round((time.time()-self.started)*1000),
+            'errors': self.errors, 'warnings': self.warnings, 'process': self.process}, ensure_ascii=False, indent=2), encoding='utf-8')
         tmp.replace(path)

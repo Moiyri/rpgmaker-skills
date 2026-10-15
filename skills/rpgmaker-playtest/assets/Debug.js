@@ -95,7 +95,7 @@
         }
     });
     // Hooks are independent of registered game commands.
-    const configPath = typeof process !== 'undefined' ? process.env.RM_EVENT_TEST_CONFIG : null;
+    const configPath = typeof process !== 'undefined' ? process.env.RM_PLAYTEST_CONFIG : null;
     const config = configPath ? JSON.parse(require('fs').readFileSync(configPath, 'utf8')) : null;
     const fields = {
         'game.ready': [], 'runtime.error': ['origin'], 'runtime.warning': ['origin'],
@@ -106,6 +106,13 @@
         'variable.change': ['id','value'], 'switch.change': ['id','value']
     };
     const hooks = new Map(), groups = new Map(), records = [];
+    let sink = null;
+    function sendRecords() {
+        while (sink && records.length) {
+            try { sink(JSON.stringify(records[0])); records.shift(); }
+            catch (_) { sink = null; }
+        }
+    }
     let finish = false, ready = false, executionCounter = 0, parent = null, callingCommon = null;
     const executions = new WeakMap();
     const clone = value => {
@@ -123,7 +130,12 @@
                 if (h.action === 'finish') finish = true;
             }
         }
-        if (matched.length) records.push({time: Date.now(), signal: on, hooks: matched, ...clone(data)});
+        if (matched.length) {
+            records.push({time: Date.now(), signal: on, hooks: matched,
+                finish: matched.some(id => hooks.get(id).action === 'finish'),
+                finishHooks: matched.filter(id => hooks.get(id).action === 'finish'), ...clone(data)});
+            sendRecords();
+        }
         reconcile();
     }
     function install(group) {
@@ -140,9 +152,9 @@
         const error = (origin, value) => emit('runtime.error', {origin,
             message: String(value?.message || value), stack: String(value?.stack || '')});
         if (group === 'ready') {
-            wrap(Scene_Map.prototype, 'start', original => function() {
+            for (const scene of [Scene_Title, Scene_Map]) wrap(scene.prototype, 'start', original => function() {
                 const result = original.apply(this, arguments);
-                if (!ready) { ready = true; emit('game.ready', state()); }
+                if (!ready && (config?.commands ? this instanceof Scene_Map : this instanceof Scene_Title || this instanceof Scene_Map)) { ready = true; emit('game.ready', state()); }
                 return result;
             });
         } else if (group === 'error') {
@@ -228,17 +240,23 @@
         list() { return clone([...hooks.values()]); },
         remove(id) { const removed=hooks.delete(id); reconcile(); return removed; },
         clear() { hooks.clear(); reconcile(); },
-        poll(cursor=0) { return {events:clone(records.slice(cursor)),cursor:records.length,finish}; }
+        connect(binding) {
+            if (typeof window[binding] !== 'function') throw new Error('CDP binding unavailable');
+            sink = window[binding]; sendRecords();
+        },
+        disconnect() { sink = null; }
     };
     if (config) {
         for (const h of config.hooks) if (Object.hasOwn(fields,h.on)) api.hooks.add(h);
         // Event test boot and save redirection are separate from hook observation.
+        if (config.commands) {
         Scene_Boot.prototype.startNormalGame = function() {
             window.$testEvent = config.commands;
             DataManager.setupEventTest();
             SceneManager.goto(Scene_Map);
         };
         StorageManager.fileDirectoryPath = () => config.saveDirectory + '/';
+        }
     }
 
     class DebugControl {

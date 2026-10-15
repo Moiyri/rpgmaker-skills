@@ -5,9 +5,6 @@ from pathlib import Path
 from copy import deepcopy
 import hashlib
 import json
-import tempfile
-import time
-from hooks import Hook, Hooks, HookReport, PROCESS_SIGNALS
 
 
 def _integer(value, name, minimum=0):
@@ -84,157 +81,17 @@ def prepare_event_test(project, *, map_id=None, event_id=None,
                          filename, hashlib.sha256(raw).hexdigest())
 
 
-class EventTestSession:
-    def __init__(self, game, report):
-        self.game, self.report = game, report
-        self.report_dir = report.directory
-        self.cursor = 0
-        self.terminated = False
-
-    def add_hook(self, hook):
-        if self.terminated: raise RuntimeError('Session has ended')
-        if not isinstance(hook, Hook): raise TypeError('Expected Hook')
-        data = hook.to_config()
-        if any(h['id'] == data['id'] for h in self.list_hooks()):
-            raise ValueError('Duplicate hook: ' + data['id'])
-        if data['on'] in PROCESS_SIGNALS:
-            self.report.process_hooks[data['id']] = {**data, 'active': True}
-            return deepcopy(data)
-        return self.game.connection.evaluate('Debug.hooks.add(' + json.dumps(data) + ')')
-
-    def list_hooks(self):
-        local = list(self.report.process_hooks.values())
-        remote = [] if self.terminated else self.game.connection.evaluate('Debug.hooks.list()')
-        return deepcopy(local + remote)
-
-    def remove_hook(self, name):
-        if name in self.report.process_hooks:
-            del self.report.process_hooks[name]
-            return True
-        if self.terminated: return False
-        return self.game.connection.evaluate('Debug.hooks.remove(' + json.dumps(name) + ')')
-
-    def clear_hooks(self):
-        self.report.process_hooks.clear()
-        if not self.terminated: self.game.connection.evaluate('Debug.hooks.clear()')
-
-    def poll(self):
-        if self.terminated: return self.read_report()
-        if self.game.owned_process.poll() is not None:
-            self.game.report_owned_exit()
-            self.report.status = 'exited'
-            self.report.write()
-            self.terminated = True
-            return self.read_report()
-        try:
-            self.game._connect()
-            result = self.game.connection.evaluate(f'Debug.hooks.poll({self.cursor})', timeout=5)
-            for entry in result['events']: self.report.append(entry)
-            self.cursor = result['cursor']
-            if result['finish']:
-                self.report.finish = True
-                errors = [e for e in result['events'] if e['signal'] == 'runtime.error']
-                self.report.status = 'failed' if errors else 'completed'
-                if errors: self.report.error = errors[-1]
-            self.report.write()
-            if self.report.finish:
-                self.game.connection.evaluate('Debug.hooks.clear()', timeout=5)
-                self.game.stop_owned_process()
-                self.game.close()
-                self.terminated = True
-        except (OSError, RuntimeError, ConnectionError, TimeoutError) as error:
-            self.report.status = 'failed'
-            self.report.error = {'origin': 'connection', 'message': str(error)}
-            self.report.write()
-            self.game.stop_owned_process()
-            self.game.close()
-            self.terminated = True
-        return self.read_report()
-
-    def status(self): return self.poll()
-
-    def wait(self, timeout=30, poll_interval=.2):
-        if timeout < 0 or poll_interval <= 0: raise ValueError('Invalid wait duration')
-        end = time.monotonic() + timeout
-        while True:
-            result = self.poll()
-            if result['status'] != 'running' or time.monotonic() >= end: return result
-            time.sleep(min(poll_interval, max(0, end-time.monotonic())))
-
-    def screenshot(self, path): self.game.screenshot(path)
-    def read_report(self):
-        return json.loads((self.report_dir / 'session.json').read_text(encoding='utf-8'))
-
-
 @contextmanager
 def launch_event_test(project, executable, *, map_id=None, event_id=None,
                       common_event_id=None, page=1, commands=None, hooks=None,
                       port=19224, timeout=30, report_dir=None):
-    """Hooks 在启动前安装；显式配置 event.end/finish 可在事件结束后关闭游戏。"""
-    from session import launch, HookFinished
-    if hooks is None:
-        hooks = Hooks()
-        hooks.add(Hook('eventEnd', on='event.end', action='finish', parentId=None))
-        hooks.add(Hook('runtimeError', on='runtime.error', action='finish'))
-    if not isinstance(hooks, Hooks): raise TypeError('hooks must be Hooks')
+    """Prepare event commands; return the same Game as launch()."""
+    from session import launch
     plan = prepare_event_test(project, map_id=map_id, event_id=event_id,
                               common_event_id=common_event_id, page=page, commands=commands)
-    directory = Path(report_dir).resolve() if report_dir else Path(tempfile.mkdtemp(prefix='rpgmaker-event-report-'))
-    directory.mkdir(parents=True, exist_ok=True)
-    plan.verify()
-    report = HookReport(directory, hooks, plan.summary())
-    test = None
-    started = False
-    def observe(signal, **data):
-        report.emit(signal, **data)
-        if report.finish and signal == 'process.start':
-            report.status = 'completed'; report.write()
-            return True
-        return False
-    def poll_startup(game):
-        nonlocal test
-        if test is None:
-            try:
-                available = game.connection.evaluate("typeof Debug !== 'undefined' && !!Debug.hooks")
-            except (OSError, RuntimeError, ConnectionError, TimeoutError): return False
-            if not available: return False
-            test = EventTestSession(game, report)
-        test.poll()
-        return test.terminated
-    try:
-        with tempfile.TemporaryDirectory(prefix='rpgmaker-event-config-') as temporary:
-            temp = Path(temporary)
-            config = temp / 'event.json'
-            config.write_text(json.dumps({**plan.config(temp/'save'), 'hooks': hooks.to_config()}, ensure_ascii=False), encoding='utf-8')
-            with launch(plan.project, executable, port, timeout,
-                        environment={'RM_EVENT_TEST_CONFIG': str(config)},
-                        log_path=directory/'runtime.log', observer=observe, startup_poll=poll_startup) as game:
-                game.check_debug()
-                if not game.connection.evaluate("!!Debug.hooks"):
-                    raise RuntimeError('Installed Debug.js lacks hooks')
-                started = True
-                if test is None: test = EventTestSession(game, report)
-                test.poll()
-                try:
-                    yield test
-                finally:
-                    if not test.terminated:
-                        test.poll()
-                        if not test.terminated:
-                            try: game.connection.evaluate('Debug.hooks.clear()', timeout=5)
-                            except (OSError, RuntimeError, ConnectionError, TimeoutError): pass
-                            report.status = 'cancelled'
-                            report.write()
-    except HookFinished:
-        if test is None: test = EventTestSession(None, report)
-        test.terminated = True
-        yield test
-    except BaseException as error:
-        if not started:
-            report.emit('startup.failed', message=str(error))
-        else:
-            report.status = 'failed'; report.error = {'message': str(error)}; report.write()
-        raise
+    with launch(project, executable, port, timeout, hooks=hooks,
+                report_dir=report_dir, _event_plan=plan) as game:
+        yield game
 
 
 if __name__ == '__main__':
@@ -261,10 +118,10 @@ if __name__ == '__main__':
         print(json.dumps(prepare_event_test(args.project,**options).summary(),ensure_ascii=False,indent=2))
     else:
         if not args.executable: parser.error('--run requires --executable')
-        with launch_event_test(args.project,args.executable,**options,port=args.port,report_dir=args.report_dir) as test:
-            print(json.dumps({'report_dir':str(test.report_dir),'status':test.status()},ensure_ascii=False),flush=True)
+        with launch_event_test(args.project,args.executable,**options,port=args.port,report_dir=args.report_dir) as game:
+            print(json.dumps({'report_dir':str(game.report_dir),'status':game.status()},ensure_ascii=False),flush=True)
             while True:
-                result = test.wait(timeout=10)
+                result = game.wait(timeout=10)
                 if result['status'] != 'running':
                     print(json.dumps(result,ensure_ascii=False),flush=True)
                     break

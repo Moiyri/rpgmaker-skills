@@ -77,14 +77,14 @@ def collect_manual(open_session):
         _write(path, {'status':status,'pid':os.getpid(),'updated':time.time(),**details})
     acknowledge('starting')
     try:
-        with open_session(directory) as test:
-            current = test.poll()
+        with open_session(directory) as game:
+            current = game.poll()
             if current['status'] == 'running':
                 acknowledge('running')
                 while current['status'] == 'running':
-                    current = test.wait(timeout=1)
+                    current = game.wait(timeout=1)
         # Written only after the session context has closed its processes/temp files.
-        acknowledge('finished', result=test.read_report()['status'])
+        acknowledge('finished', result=game.read_report()['status'])
         return read_report(directory)
     except BaseException as error:
         acknowledge('failed', error=str(error))

@@ -9,6 +9,7 @@ import subprocess
 import tempfile
 import time
 from playtest import Game
+from hooks import Hook, Hooks, HookReport
 
 class HookFinished(RuntimeError):
     """A startup hook ended the session before a game connection was available."""
@@ -74,12 +75,14 @@ def stop_process_tree(process, timeout=5):
     process.wait(timeout=timeout)
 
 @contextmanager
-def launch(project, executable, port=19224, timeout=30, *, environment=None, log_path=None, observer=None, startup_poll=None):
+def _launch_process(project, executable, port=19224, timeout=30, *, environment=None, log_path=None, observer=None, startup_poll=None):
     """project 为工程根目录，executable 为 nw.exe 或 nwjs 可执行文件。"""
     project=Path(project).resolve(strict=True)
     executable=Path(executable).resolve(strict=True)
     if not (project/'package.json').is_file():raise ValueError('Missing package.json')
-    with socket.socket() as probe:probe.bind(('127.0.0.1',port))
+    with socket.socket() as probe:
+        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        probe.bind(('127.0.0.1',port))
     env = os.environ.copy()
     if environment:
         env.update(environment)
@@ -118,9 +121,11 @@ def launch(project, executable, port=19224, timeout=30, *, environment=None, log
                     raise HookFinished('A hook finished the session during startup')
                 if process.poll() is not None:raise RuntimeError('NW.js exited during startup')
                 try:
-                    status=game.connection.evaluate("({ready: typeof SceneManager !== 'undefined' && !!SceneManager._scene?.isStarted() && typeof DataManager !== 'undefined' && !!DataManager._globalInfo, test: typeof Utils !== 'undefined' && Utils.isOptionValid('test'), url: location.href, argv: typeof nw !== 'undefined' ? nw.App.argv : null, node: typeof process !== 'undefined' ? process.versions.node : null, error: document.querySelector('#errorPrinter')?.innerText || ''})")
+                    status=game.connection.evaluate("({ready: typeof SceneManager !== 'undefined' && (SceneManager._scene instanceof Scene_Title || SceneManager._scene instanceof Scene_Map) && !!SceneManager._scene?.isStarted() && typeof DataManager !== 'undefined' && !!DataManager._globalInfo, test: typeof Utils !== 'undefined' && Utils.isOptionValid('test'), url: location.href, argv: typeof nw !== 'undefined' ? nw.App.argv : null, node: typeof process !== 'undefined' ? process.versions.node : null, error: document.querySelector('#errorPrinter')?.innerText || ''})")
                 except RuntimeError:
                     status=None  # 页面仍在初始化，稍后重试；不导航或刷新。
+                if status and status.get('error'):
+                    raise RuntimeError('Game startup error: ' + status['error'])
                 if status and status.get('ready'):
                     if not status.get('test'):raise RuntimeError('NW.js did not enable test mode; startup: '+json.dumps(status,ensure_ascii=False))
                     break
@@ -138,3 +143,80 @@ def launch(project, executable, port=19224, timeout=30, *, environment=None, log
                 else:
                     stop_process_tree(process)
                 report_exit()
+
+@contextmanager
+def launch(project, executable, port=19224, timeout=30, *, hooks=None,
+           report_dir=None, environment=None, log_path=None, _event_plan=None):
+    """Launch a game; optional hooks/reporting use the same Game API as event tests."""
+    if hooks is None and report_dir is None and _event_plan is None:
+        with _launch_process(project, executable, port, timeout,
+                             environment=environment, log_path=log_path) as game:
+            yield game
+        return
+    if hooks is None:
+        hooks = Hooks()
+        if _event_plan is not None: hooks.add(Hook('eventEnd', on='event.end', action='finish', parentId=None))
+        hooks.add(Hook('runtimeError', on='runtime.error', action='finish'))
+    if not isinstance(hooks, Hooks): raise TypeError('hooks must be Hooks')
+    project = Path(project).resolve()
+    directory = Path(report_dir).resolve() if report_dir else Path(tempfile.mkdtemp(prefix='rpgmaker-event-report-'))
+    directory.mkdir(parents=True, exist_ok=True)
+    if _event_plan is not None: _event_plan.verify()
+    report = HookReport(directory, hooks, _event_plan.summary() if _event_plan is not None else {'project': str(project), 'source': 'normal'})
+    game = None
+    started = False
+    def observe(signal, **data):
+        report.emit(signal, **data)
+        if report.finish and signal == 'process.start':
+            report.status = 'finished'; report.write()
+            return True
+        return False
+    def poll_startup(candidate):
+        nonlocal game
+        if game is None:
+            try:
+                available = candidate.connection.evaluate("typeof Debug !== 'undefined' && !!Debug.hooks")
+            except (OSError, RuntimeError, ConnectionError, TimeoutError): return False
+            if not available: return False
+            game = candidate
+            game._set_report(report)
+        game.poll()
+        return game.terminated
+    try:
+        with tempfile.TemporaryDirectory(prefix='rpgmaker-event-config-') as temporary:
+            temp = Path(temporary)
+            config = temp / 'event.json'
+            payload = {'hooks': hooks.to_config()}
+            if _event_plan is not None: payload.update(_event_plan.config(temp/'save'))
+            config.write_text(json.dumps(payload, ensure_ascii=False), encoding='utf-8')
+            with _launch_process(project, executable, port, timeout,
+                        environment={**(environment or {}), 'RM_PLAYTEST_CONFIG': str(config)},
+                        log_path=log_path or directory/'runtime.log', observer=observe, startup_poll=poll_startup) as game:
+                game.check_debug()
+                if not game.connection.evaluate("!!Debug.hooks"):
+                    raise RuntimeError('Installed Debug.js lacks hooks')
+                started = True
+                game._set_report(report)
+                game.poll()
+                try:
+                    yield game
+                finally:
+                    if not game.terminated:
+                        game.poll()
+                        if not game.terminated:
+                            try: game.connection.evaluate('Debug.hooks.clear()', timeout=5)
+                            except (OSError, RuntimeError, ConnectionError, TimeoutError): pass
+                            report.status = 'cancelled'
+                            report.write()
+    except HookFinished:
+        if game is None:
+            game = Game(port, _connect_now=False)
+            game._set_report(report)
+        game.terminated = True
+        yield game
+    except BaseException as error:
+        if not started:
+            report.emit('startup.failed', message=str(error))
+        else:
+            report.status = 'failed'; report.error = {'message': str(error)}; report.write()
+        raise

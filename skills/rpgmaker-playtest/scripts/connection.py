@@ -2,6 +2,7 @@
 import base64
 import hashlib
 import json
+import select
 import secrets
 import socket
 import struct
@@ -17,7 +18,7 @@ class CDP:
         u=urlsplit(pages[0]['webSocketDebuggerUrl'])
         if u.scheme!='ws' or u.hostname not in ('127.0.0.1','localhost','::1'): raise ValueError('Local websocket required')
         self.sock=socket.create_connection((u.hostname,u.port),5)
-        self.buffer=b''; self.serial=0; self.events=[]
+        self.buffer=b''; self.serial=0; self.events=[]; self.listeners={}
         key=base64.b64encode(secrets.token_bytes(16)).decode()
         self.sock.sendall((f'GET {u.path} HTTP/1.1\r\nHost: {u.netloc}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n').encode())
         while b'\r\n\r\n' not in self.buffer:
@@ -64,6 +65,20 @@ class CDP:
             parts.append(data)
             if sum(map(len,parts))>32*1024*1024:raise ValueError('Message too large')
             if a&128:return json.loads(b''.join(parts))
+    def on(self, method, callback):
+        self.listeners[method] = callback
+    def _dispatch(self, message):
+        callback = self.listeners.get(message.get('method'))
+        if callback:
+            callback(message.get('params', {}))
+        else:
+            self.events.append(message)
+            self.events = self.events[-200:]
+    def receive_event(self, timeout=.2):
+        """Wait for server events; no Runtime.evaluate polling."""
+        if not self.buffer and not select.select([self.sock], [], [], timeout)[0]: return False
+        self._dispatch(self._receive(time.monotonic()+5))
+        return True
     def request(self,method,params=None,timeout=45):
         self.serial+=1;request_id=self.serial
         self._send(json.dumps({'id':request_id,'method':method,'params':params or {}}).encode())
@@ -74,8 +89,7 @@ class CDP:
                 if message.get('id')==request_id:
                     if 'error' in message:raise RuntimeError(message['error'])
                     return message.get('result',{})
-                self.events.append(message)
-                self.events=self.events[-200:]
+                self._dispatch(message)
         except (TimeoutError,ConnectionError,OSError):
             self.close();raise
     def evaluate(self,expression,timeout=45):
