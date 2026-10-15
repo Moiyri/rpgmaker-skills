@@ -5,7 +5,7 @@ description: 启动或附加 RPG Maker MZ 的 NW.js 游戏，动态查询测试�
 
 # RPG Maker Playtest
 
-使用 Python 3.10+ 标准库客户端，不安装 Playwright 或浏览器。先读取工程约定，确认工程、NW.js 可执行文件与测试目标。实际接口见 scripts/playtest.py、scripts/session.py；[最小测试](examples/load_game.py)。
+使用 Python 3.10+ 标准库客户端，不安装 Playwright 或浏览器。先读取工程约定，确认工程、NW.js 可执行文件与测试目标。统一使用 `from session import launch`；`launch()` 与 `launch_event_test()` 均返回 `Game`，调用变量一律命名 `game`。普通启动和读档在 `launch(..., hooks=hooks, report_dir=...)` 中共用采集；`game.wait()` 等到结束，或传 timeout 分段等待。实际接口见 scripts/playtest.py、scripts/session.py；[最小测试](examples/load_game.py)。
 
 现有接口、验证边界与待完善事项见[功能清单](references/capabilities.md)。设计测试前按实际能力选择接口，扩展命令名称与参数遵循正式注册规则。
 
@@ -23,7 +23,9 @@ description: 启动或附加 RPG Maker MZ 的 NW.js 游戏，动态查询测试�
 
 ## 运行时钩子
 
-使用 [Hook 对象接口](references/hooks.md) 配置启动、错误、退出、事件执行和变量／开关变化的观察。Agent 使用 `Hook`、`Hooks` 直接传参；通过 `test.add_hook/list_hooks/remove_hook/clear_hooks` 动态管理，独立于 command。启动前传入 hooks，调用 poll 或分段 wait 收集报告。实现尚未运行验收。
+普通错误只记录；使用 `Hook("fatalError", on="runtime.error", fatal=True, action="finish")` 在引擎错误处理实际停止游戏循环后结束测试。`console.error` 本身不作为关闭依据。
+
+使用 [Hook 对象接口](references/hooks.md) 配置启动、错误、退出、事件执行和变量／开关变化的观察。Agent 使用 `Hook`、`Hooks` 直接传参；通过 `game.add_hook/list_hooks/remove_hook/clear_hooks` 动态管理，独立于 command。启动前传入 hooks，调用 poll 或分段 wait 收集报告。验收范围见[功能清单](references/capabilities.md)。
 
 ## 自动化测试与用户测试
 
@@ -31,7 +33,7 @@ description: 启动或附加 RPG Maker MZ 的 NW.js 游戏，动态查询测试�
 
 编写前明确测试起点、操作步骤、预期和超时，并核对工具实际支持的能力。缺少接口时，先向用户说明定义、实现方式与修改范围，确认后再实现；按键、消息等待和断言方法尚未提供，不能当作已有 API 使用。
 
-用户手动测试时，目标流程是 agent 配置钩子并启动游戏和后台采集程序，告知操作步骤后结束当前工作；用户完成后通知 agent，再读取报告分析。轮询由后台程序承担。目前独立后台采集流程尚未实现，需先补齐，不能将前台 wait 当作已支持的后台任务。
+用户手动测试时，目标流程是 agent 配置钩子并启动游戏和后台采集程序，告知操作步骤后结束当前工作；用户完成后通知 agent，再读取报告分析。轮询由后台程序承担。后台执行脚本使用 [手动测试流程](references/manual-test.md)，通过 CDP binding 接收推送；该流程已在合成 MZ 工程验收，具体边界见功能清单。
 
 ## 测试文件与清理
 

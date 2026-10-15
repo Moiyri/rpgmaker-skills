@@ -10,15 +10,15 @@
 from event_test import launch_event_test
 
 with launch_event_test(project, nwjs, common_event_id=138,
-                       commands=(5, 12), report_dir=report_path) as test:
-    result = test.wait(timeout=30)
+                       commands=(5, 12), report_dir=report_path) as game:
+    result = game.wait(timeout=30)
     while result['status'] in ('pending', 'running'):
-        result = test.wait(timeout=30)
+        result = game.wait(timeout=30)
 ```
 
 地图事件改用 `map_id=31, event_id=3, page=1`。页码从 1 开始。`commands=(start,end)` 使用源列表原始下标，从 0 开始，包含 start、不包含 end；省略时传入整个列表。所选记录原样保留，包括缩进，不补写结束指令。引擎在列表耗尽时结束执行。
 
-`prepare_event_test` 接受相同的目标和选区参数，只读并返回计划；启动前核对源文件指纹。公共事件不需要地图。`timeout` 是启动等待时间，`test.wait(timeout=30)` 是一次分段等待时长。
+`prepare_event_test` 接受相同的目标和选区参数，只读并返回计划；启动前核对源文件指纹。公共事件不需要地图。`timeout` 是启动等待时间，`game.wait(timeout=30)` 是一次分段等待时长。
 
 ## 启动实现
 
@@ -54,3 +54,5 @@ python3 scripts/event_test.py PROJECT --map-id 31 --event-id 3 --run --executabl
 本轮按用户要求未运行测试或启动游戏。此前自定义地图测试的验证结果不适用于重构后的流程。
 
 编辑器对分支内选区、缩进和续行的导出处理尚待样例核对。当前按原始记录传递，不将其宣称为已完全复现编辑器的选区生成规则；遇到这类测试目标先反馈并核对样例。
+
+手动测试后台启动与 CDP 推送采集见[手动测试流程](manual-test.md)。当前实现尚未实机验收。

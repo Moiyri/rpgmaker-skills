@@ -9,29 +9,30 @@ from event_test import launch_event_test
 hooks = Hooks()
 hooks.add(Hook('started', on='process.start'))
 hooks.add(Hook('ready', on='game.ready'))
-hooks.add(Hook('error', on='runtime.error', action='finish'))
+hooks.add(Hook('error', on='runtime.error'))
+hooks.add(Hook('fatalError', on='runtime.error', fatal=True, action='finish'))
 hooks.add(Hook('warning', on='runtime.warning'))
 hooks.add(Hook('exit', on='process.exit'))
 hooks.add(Hook('calls', on='event.call'))
 hooks.add(Hook('door', on='switch.change', id=21, value=True, action='finish'))
 
 with launch_event_test(project, nwjs, common_event_id=138,
-                       hooks=hooks, report_dir=report_path) as test:
-    result = test.wait(timeout=30)
+                       hooks=hooks, report_dir=report_path) as game:
+    result = game.wait(timeout=30)
     while result['status'] == 'running':
-        result = test.wait(timeout=30)
+        result = game.wait(timeout=30)
 ```
 
-运行中使用 `test.add_hook(Hook(...))`、`test.list_hooks()`、`test.remove_hook(name)`、`test.clear_hooks()`。启动前的管理对象也有 `add/remove/clear`。同一会话名称唯一；不支持的信号、筛选字段或 action 注册时报错。
+运行中使用 `game.add_hook(Hook(...))`、`game.list_hooks()`、`game.remove_hook(name)`、`game.clear_hooks()`。启动前的管理对象也有 `add/remove/clear`。同一会话名称唯一；不支持的信号、筛选字段或 action 注册时报错。
 
 ## 信号
 
 | on | 时机 | 筛选字段 |
 | --- | --- | --- |
 | process.start | Python 创建 NW.js 后 | pid |
-| game.ready | 第一次 Scene_Map.start 返回后，一次会话仅一次 | 无 |
+| game.ready | 正常启动为标题场景开始后，事件测试为地图场景开始后，一次会话仅一次 | 无 |
 | startup.failed | 启动抛出异常或超时 | message |
-| runtime.error | window.error、unhandledrejection、SceneManager.catchException、console.error | origin |
+| runtime.error | window.error、unhandledrejection、SceneManager.catchException、console.error；引擎错误处理调用 stop 时 fatal=true | origin、fatal |
 | runtime.warning | console.warn | origin |
 | process.exit | Python 确认本次进程退出 | code、requested |
 | event.start | Game_Interpreter.setup 返回后 | mapId、eventId、commonEventId、executionId、parentId |
@@ -53,14 +54,16 @@ with launch_event_test(project, nwjs, common_event_id=138,
 
 方法包装按采集类别共享。移除或停用最后一个相关钩子时恢复方法并移除监听。clear 解除全部采集。不同错误入口可能记录同一次异常的不同传播阶段。
 
-`test.poll()` 增量采集至 events.jsonl，并返回 session.json 状态；`wait` 分段轮询。Python 持续调用这些方法才能持续保存游戏记录。启动期间由启动器负责轮询。启动钩子提前结束时返回已结束的 test，不能继续添加钩子或截图。
+Debug 通过 Runtime.addBinding / Runtime.bindingCalled 推送记录，连接前暂存内存，连接后按顺序发送。Python 的 `game.poll()` 接收已送达的 CDP 事件，`wait` 等待 socket 可读；不再反复执行 JavaScript 查询日志。后台脚本持续接收并写入 events.jsonl 和 session.json，agent 无需等待。启动期间由启动器接收。启动钩子提前结束时返回已结束的 game，不能继续添加钩子或截图。
 
-进程启动与退出记录始终保留用于诊断；匹配到的钩子 ID 同时记录。状态为 running/completed/failed/exited/cancelled。非工具主动退出不自动称为崩溃，结合退出码、runtime.log 和错误记录判断。硬崩溃前尚未传出的内存记录可能丢失。
+进程启动与退出记录始终保留用于诊断；匹配到的钩子 ID 同时记录。状态为 running/finished/failed/exited/cancelled。非工具主动退出不自动称为崩溃，结合退出码、runtime.log 和错误记录判断。硬崩溃前尚未传出的内存记录可能丢失。
 
-不传 hooks 时，事件测试默认提供根事件结束 finish 和运行错误 finish 两个钩子；显式传 Hooks 时完全使用传入的配置。只有 record 的会话不会因事件结束自动关闭。
+不传 hooks 时，事件测试默认提供根事件结束 finish 和普通错误 record 和 fatal=true 错误 finish 钩子；显式传 Hooks 时完全使用传入的配置。只有 record 的会话不会因事件结束自动关闭。
 
 工程外临时配置通过环境变量路径传入；游戏仍以 test 启动。存档目录重定向和原版事件测试启动属于会话设置，不受 clear_hooks 影响；随进程和临时目录清理。工程文件不修改，指定报告保留。
 
 ## 验证状态
 
-已编写实现与 Python 行为用例。本轮按用户要求未执行测试、语法检查或引擎验收。12 个信号、父子解释器追踪、恢复包装、报告后退出均待运行验证。
+2026-10-16 已执行脚本测试与真实 MZ/NW.js 验收，具体范围和未覆盖场景见[功能清单](capabilities.md)。
+
+错误策略：普通 console.error、window.error、unhandledrejection 只记录（fatal=false）。SceneManager.catchException/onError 处理过程中实际调用 stop 后另发 fatal=true，默认仅此类错误结束游戏。单独 stop 不算错误。原版 onReject 转交 onError，因此未处理的 Promise 若引擎因此停止，同样属于 fatal。插件打印可恢复错误不会触发关闭。
