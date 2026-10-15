@@ -156,7 +156,8 @@ def launch(project, executable, port=19224, timeout=30, *, hooks=None,
     if hooks is None:
         hooks = Hooks()
         if _event_plan is not None: hooks.add(Hook('eventEnd', on='event.end', action='finish', parentId=None))
-        hooks.add(Hook('runtimeError', on='runtime.error', action='finish'))
+        hooks.add(Hook('runtimeError', on='runtime.error', action='record'))
+        hooks.add(Hook('fatalError', on='runtime.error', fatal=True, action='finish'))
     if not isinstance(hooks, Hooks): raise TypeError('hooks must be Hooks')
     project = Path(project).resolve()
     directory = Path(report_dir).resolve() if report_dir else Path(tempfile.mkdtemp(prefix='rpgmaker-event-report-'))

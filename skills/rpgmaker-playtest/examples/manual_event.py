@@ -14,7 +14,8 @@ NWJS = '/absolute/path/to/nwjs'
 if __name__ == '__main__':
     hooks = Hooks()
     hooks.add(Hook('ready', on='game.ready'))
-    hooks.add(Hook('error', on='runtime.error', action='finish'))
+    hooks.add(Hook('error', on='runtime.error'))
+    hooks.add(Hook('fatalError', on='runtime.error', fatal=True, action='finish'))
     hooks.add(Hook('warning', on='runtime.warning'))
     hooks.add(Hook('calls', on='event.call'))
     hooks.add(Hook('end', on='event.end'))

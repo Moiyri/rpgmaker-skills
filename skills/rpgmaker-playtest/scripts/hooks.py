@@ -5,7 +5,7 @@ import time
 
 FIELDS = {
     'process.start': {'pid'}, 'game.ready': set(),
-    'startup.failed': {'message'}, 'runtime.error': {'origin'},
+    'startup.failed': {'message'}, 'runtime.error': {'origin', 'fatal'},
     'runtime.warning': {'origin'}, 'process.exit': {'code', 'requested'},
     'event.start': {'mapId', 'eventId', 'commonEventId', 'executionId', 'parentId'},
     'event.call': {'mapId', 'eventId', 'commonEventId', 'executionId', 'parentId'},
@@ -27,7 +27,7 @@ class Hook:
             if key in ('id', 'pid', 'eventId', 'commonEventId', 'executionId', 'index', 'sourceIndex', 'code', 'mapId', 'parentId'):
                 if value is not None and type(value) is not int: raise ValueError(key + ' must be an integer')
             if key == 'phase' and value not in ('before', 'after'): raise ValueError('Invalid phase')
-            if key == 'requested' and type(value) is not bool: raise ValueError('requested must be bool')
+            if key in ('requested', 'fatal') and type(value) is not bool: raise ValueError(key + ' must be bool')
             if on == 'switch.change' and key == 'value' and type(value) is not bool: raise ValueError('Switch value must be bool')
         json.dumps(match, allow_nan=False)
         self._data = {'id': name, 'on': on, 'action': action, 'once': once, 'match': deepcopy(match)}

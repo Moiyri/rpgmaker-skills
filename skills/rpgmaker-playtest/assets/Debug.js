@@ -98,7 +98,7 @@
     const configPath = typeof process !== 'undefined' ? process.env.RM_PLAYTEST_CONFIG : null;
     const config = configPath ? JSON.parse(require('fs').readFileSync(configPath, 'utf8')) : null;
     const fields = {
-        'game.ready': [], 'runtime.error': ['origin'], 'runtime.warning': ['origin'],
+        'game.ready': [], 'runtime.error': ['origin','fatal'], 'runtime.warning': ['origin'],
         'event.start': ['mapId','eventId','commonEventId','executionId','parentId'],
         'event.call': ['mapId','eventId','commonEventId','executionId','parentId'],
         'event.command': ['mapId','eventId','commonEventId','executionId','parentId','index','sourceIndex','code','phase'],
@@ -149,7 +149,7 @@
             window.addEventListener(name, fn);
             restores.push(() => window.removeEventListener(name, fn));
         };
-        const error = (origin, value) => emit('runtime.error', {origin,
+        const error = (origin, value, fatal = false) => emit('runtime.error', {origin, fatal,
             message: String(value?.message || value), stack: String(value?.stack || '')});
         if (group === 'ready') {
             for (const scene of [Scene_Title, Scene_Map]) wrap(scene.prototype, 'start', original => function() {
@@ -160,8 +160,19 @@
         } else if (group === 'error') {
             listen('error', e => error('window.error', e.error || e.message));
             listen('unhandledrejection', e => error('unhandledrejection', e.reason));
-            wrap(SceneManager, 'catchException', original => function(e) {
-                error('SceneManager.catchException', e); return original.apply(this, arguments);
+            let errorContext = null;
+            for (const method of ['catchException', 'onError']) {
+                wrap(SceneManager, method, original => function(e) {
+                    const previous = errorContext;
+                    errorContext = {origin: 'SceneManager.' + method, value: e?.error || e?.reason || e?.message || e};
+                    try { return original.apply(this, arguments); }
+                    finally { errorContext = previous; }
+                });
+            }
+            wrap(SceneManager, 'stop', original => function() {
+                const result = original.apply(this, arguments);
+                if (errorContext) error(errorContext.origin, errorContext.value, true);
+                return result;
             });
             wrap(console, 'error', original => function(...args) {
                 error('console.error', args.map(x => String(x?.stack || x)).join(' '));

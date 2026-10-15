@@ -14,12 +14,13 @@ if __name__ == '__main__':
     args=parser.parse_args()
     hooks=Hooks()
     hooks.add(Hook('ready',on='game.ready'))
-    hooks.add(Hook('errors',on='runtime.error',action='finish'))
+    hooks.add(Hook('errors',on='runtime.error'))
+    hooks.add(Hook('fatalError',on='runtime.error',fatal=True,action='finish'))
     hooks.add(Hook('done',on='event.end',parentId=None,action='finish'))
     hooks.add(Hook('exit',on='process.exit'))
-    with launch_event_test(args.project,args.executable,common_event_id=args.common_event_id,report_dir=args.report_dir,hooks=hooks) as test:
-        print('用户可在游戏中操作对白与选项；报告位置：',test.report_dir,flush=True)
-        result=test.wait(timeout=30)
+    with launch_event_test(args.project,args.executable,common_event_id=args.common_event_id,report_dir=args.report_dir,hooks=hooks) as game:
+        print('用户可在游戏中操作对白与选项；报告位置：',game.report_dir,flush=True)
+        result=game.wait(timeout=30)
         while result['status'] in ('pending','running'):
-            result=test.wait(timeout=30)
+            result=game.wait(timeout=30)
         print(result,flush=True)
